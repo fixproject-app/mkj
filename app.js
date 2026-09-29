@@ -6,8 +6,8 @@
 
 // ── Konfigurasi Supabase ──
 // Ganti dengan Project URL dan Anon Key dari dashboard Supabase Anda
-const SUPABASE_URL      = 'https://YOUR_PROJECT_ID.supabase.co';
-const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY';
+const SUPABASE_URL      = 'https://srsifsztyrwsjijismvu.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_5y0_SGaMs4orUa73JtAC5A_iylznVCP';
 
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
