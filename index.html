@@ -2,611 +2,882 @@
 <html lang="id" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
-  <title>MOTORAN KARO JASAK #1 — Pendaftaran & Merchandise</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>MKJ Web — Motoran Karo Jasak</title>
+  <meta name="description" content="Platform pendaftaran event motoran ayah-anak, pemesanan merchandise resmi, dan manajemen check-in tiket." />
 
-  <!-- CSS Dependencies -->
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <!-- Bootstrap 5 -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet" />
+
+  <!-- Custom CSS -->
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
-  <!-- Loading Overlay -->
+  <!-- ============================================================ -->
+  <!-- LOADING OVERLAY                                              -->
+  <!-- ============================================================ -->
   <div id="loading-overlay" class="d-none">
-    <div class="spinner-border text-warning" style="width: 3rem; height: 3rem;" role="status"></div>
-    <span class="text-white fw-bold mt-2" id="loading-text">Memproses data...</span>
+    <div class="loading-inner">
+      <div class="spinner-ring"></div>
+      <span class="loading-text">Loading...</span>
+    </div>
   </div>
 
-  <!-- Toast Container -->
+  <!-- ============================================================ -->
+  <!-- TOAST CONTAINER                                              -->
+  <!-- ============================================================ -->
   <div id="toast-container"></div>
 
-  <!-- Top Navbar -->
-  <nav class="navbar navbar-expand-lg navbar-dark border-bottom border-dark px-3 py-2" style="background: #111;">
-    <div class="container-fluid max-width-container">
-      <a class="navbar-brand font-display d-flex align-items-center gap-2" href="#" onclick="navigateTo('register')">
-        <i class="fa-solid fa-motorcycle text-warning"></i>
-        <span class="text-white">MKJ</span> <span class="text-warning">#1</span>
-      </a>
+  <!-- ============================================================ -->
+  <!-- APP WRAPPER                                                   -->
+  <!-- ============================================================ -->
+  <div id="app">
 
-      <div class="d-flex align-items-center gap-2">
-        <button class="btn btn-sm btn-outline-secondary text-white" onclick="toggleTheme()" title="Ubah Tema">
-          <i class="fa-solid fa-moon" id="theme-icon"></i>
-        </button>
+    <!-- ======================================================= -->
+    <!-- SECTION: HALAMAN PUBLIK (Form Registrasi)               -->
+    <!-- ======================================================= -->
+    <div id="section-public" class="app-section">
 
-        <!-- Nav Buttons -->
-        <button class="btn btn-sm btn-outline-warning d-none" id="nav-btn-scanner" onclick="navigateTo('admin-scanner')">
-          <i class="fa-solid fa-qrcode me-1"></i> Scan Tiket
-        </button>
-        <button class="btn btn-sm btn-warning text-dark fw-bold" id="nav-btn-admin" onclick="navigateTo('admin-login')">
-          <i class="fa-solid fa-user-shield me-1"></i> <span id="admin-btn-label">Admin</span>
-        </button>
-      </div>
-    </div>
-  </nav>
-
-  <!-- ============================================================
-       SECTION 1: PENDAFTARAN & KATALOG MERCHANDISE (PUBLIK)
-       ============================================================ -->
-  <section id="section-register" class="app-section">
-    <div class="app-container pb-5 mb-5">
-
-      <!-- Hero Banner -->
-      <div class="hero-banner">
-        <div class="event-tag"><i class="fa-solid fa-flag-checkered me-1"></i> Event Touring Ayah-Anak</div>
-        <h1 class="event-title">MOTORAN KARO <span>JASAK #1</span></h1>
-        <p class="event-tagline">"Gas Bareng, Kenangan Bareng, Bersama Ayah Tercinta."</p>
-
-        <div class="event-meta-grid">
-          <div class="meta-chip">
-            <i class="fa-solid fa-calendar-days"></i>
-            <span class="text-muted">Jadwal</span>
-            <strong id="disp-event-date">24 Ags 2026</strong>
-          </div>
-          <div class="meta-chip">
-            <i class="fa-solid fa-location-dot"></i>
-            <span class="text-muted">Lokasi</span>
-            <strong id="disp-event-loc">Lap. Gandusari</strong>
-          </div>
-          <div class="meta-chip">
-            <i class="fa-solid fa-ticket"></i>
-            <span class="text-muted">Biaya Tiket</span>
-            <strong id="disp-ticket-price">Rp 75.000</strong>
-          </div>
-        </div>
-      </div>
-
-      <!-- Card 1: Data Peserta -->
-      <div class="app-card">
-        <h2 class="section-title"><i class="fa-solid fa-id-card"></i> 1. Data Peserta (Ayah & Anak)</h2>
-
-        <!-- Fasilitas Tiket -->
-        <div class="ticket-inclusion-box">
-          <span class="inclusion-badge"><i class="fa-solid fa-circle-check me-1"></i> TIKET TERMASUK FASILITAS:</span>
-          <ul class="inclusion-list">
-            <li>🎫 1x Tiket Masuk Pasangan (Ayah + Anak)</li>
-            <li>🏷️ Sticker Pack Eksklusif MKJ</li>
-            <li>🎁 Kupon Doorprize</li>
-            <li>🥤 Snack & Minuman Segar</li>
-            <li>🏅 Medali Finisher Touring</li>
-          </ul>
-        </div>
-
-        <form id="form-registration" onsubmit="handleRegistrationSubmit(event)">
-          <div class="mb-3">
-            <label class="form-label">Nama Lengkap Ayah *</label>
-            <input type="text" class="form-control" id="reg-father-name" placeholder="Contoh: Budi Santoso" required />
-          </div>
-
-          <div class="row g-2 mb-3">
-            <div class="col-8">
-              <label class="form-label">Nama Lengkap Anak *</label>
-              <input type="text" class="form-control" id="reg-child-name" placeholder="Contoh: Arka Santoso" required />
-            </div>
-            <div class="col-4">
-              <label class="form-label">Usia Anak *</label>
-              <select class="form-select" id="reg-child-age" required>
-                <option value="">Pilih...</option>
-                <option value="3">3 Tahun</option>
-                <option value="4">4 Tahun</option>
-                <option value="5">5 Tahun</option>
-                <option value="6">6 Tahun</option>
-                <option value="7">7 Tahun</option>
-                <option value="8">8 Tahun</option>
-                <option value="9">9 Tahun</option>
-                <option value="10">10 Tahun</option>
-                <option value="11">11 Tahun</option>
-                <option value="12">12 Tahun</option>
-                <option value="13">13+ Tahun</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="mb-3">
-            <label class="form-label">Nomor WhatsApp Aktif *</label>
-            <div class="input-group">
-              <span class="input-group-text bg-dark border-secondary text-warning fw-bold">+62</span>
-              <input type="tel" class="form-control" id="reg-whatsapp" placeholder="81234567890" required />
-            </div>
-            <small class="text-muted">Tiket PDF & info rute akan dikirimkan panitia ke nomor ini.</small>
-          </div>
-
-          <div class="mb-3">
-            <label class="form-label">Alamat Lengkap / Domisili *</label>
-            <textarea class="form-control" id="reg-address" rows="2" placeholder="Contoh: Jl. Merdeka No. 12, Wlingi, Blitar" required></textarea>
-          </div>
-        </form>
-      </div>
-
-      <!-- Card 2: Merchandise Resmi (Opsional) -->
-      <div class="app-card">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <h2 class="section-title mb-0"><i class="fa-solid fa-shirt"></i> 2. Official Merchandise</h2>
-          <span class="badge bg-warning text-dark font-display">MKJ #1 Collection</span>
-        </div>
-        <p class="text-muted small mb-3">Pesan kaos resmi sekarang untuk kenang-kenangan motoran bareng sang buah hati.</p>
-
-        <div class="merch-grid" id="merch-items-container">
-          <!-- Item di-generate secara dinamis dari database -->
-        </div>
-      </div>
-
-      <!-- Tombol Tracking Status Cepat -->
-      <div class="text-center mt-3 mb-4">
-        <button class="btn btn-sm btn-link text-warning text-decoration-none" onclick="navigateTo('status')">
-          <i class="fa-solid fa-magnifying-glass me-1"></i> Sudah pernah daftar? Cek status tiket di sini
-        </button>
-      </div>
-
-    </div>
-
-    <!-- Sticky Checkout Floating Bar -->
-    <div class="sticky-checkout-bar">
-      <div class="checkout-inner">
-        <div>
-          <div class="total-display-label" id="summary-breakdown-text">Tiket: Rp 75.000</div>
-          <div class="total-display-amount" id="summary-total-amount">Rp 75.000</div>
-        </div>
-        <button type="button" class="btn-cta-primary" onclick="submitRegistration()">
-          Lanjut Pembayaran <i class="fa-solid fa-arrow-right"></i>
-        </button>
-      </div>
-    </div>
-  </section>
-
-  <!-- ============================================================
-       SECTION 2: INSTRUKSI PEMBAYARAN & UPLOAD BUKTI (PUBLIK)
-       ============================================================ -->
-  <section id="section-payment" class="app-section d-none">
-    <div class="app-container">
-
-      <div class="text-center my-3">
-        <div class="display-5 text-warning mb-2"><i class="fa-solid fa-circle-check"></i></div>
-        <h2 class="font-display text-white">PENDAFTARAN DICATAT!</h2>
-        <p class="text-muted">Selesaikan pembayaran untuk mengamankan slot tiket event Anda.</p>
-      </div>
-
-      <!-- Bank Card Transfer -->
-      <div class="bank-card">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-          <span class="badge bg-warning text-dark fw-bold" id="pay-bank-name">BANK BCA</span>
-          <span class="text-muted small">Kode Booking: <strong class="text-white" id="pay-ticket-code">MKJ-XXXX</strong></span>
-        </div>
-
-        <div class="mb-3">
-          <div class="text-muted small">Nomor Rekening Tujuan:</div>
-          <div class="d-flex align-items-center gap-2 mt-1">
-            <span class="font-display fs-4 text-white" id="pay-account-num">0901234567</span>
-            <button class="copy-btn" onclick="copyText('pay-account-num', 'Nomor Rekening disalin!')">
-              <i class="fa-regular fa-copy me-1"></i> Salin
-            </button>
-          </div>
-          <div class="text-warning small mt-1">a.n <strong id="pay-account-holder">PANITIA EVENT MKJ</strong></div>
-        </div>
-
-        <div class="border-top border-dark pt-3">
-          <div class="text-muted small">Total Pembayaran Tepat:</div>
-          <div class="d-flex align-items-center gap-2 mt-1">
-            <span class="font-display fs-2 text-warning" id="pay-grand-total">Rp 75.000</span>
-            <button class="copy-btn" onclick="copyNominal('pay-grand-total')">
-              <i class="fa-regular fa-copy me-1"></i> Salin Nominal
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Pesan Hangat Panitia -->
-      <div class="app-card border-warning">
-        <h3 class="font-display text-warning fs-5 mb-2"><i class="fa-solid fa-heart me-1"></i> MOTORAN KARO JASAK</h3>
-        <p class="small text-white mb-2">
-          Terima kasih sudah melakukan pendaftaran dan memesan Merchandise <strong>MKJ</strong> ❤️
-        </p>
-        <p class="small text-muted mb-0">
-          Setelah transfer, mohon <strong>upload bukti transfer</strong> di bawah agar pembayaran dapat segera diverifikasi oleh tim panitia.
-        </p>
-      </div>
-
-      <!-- Upload Form -->
-      <div class="app-card">
-        <h3 class="section-title"><i class="fa-solid fa-upload"></i> Upload Bukti Pembayaran</h3>
-
-        <input type="file" id="file-payment-receipt" class="d-none" accept="image/*,application/pdf" onchange="handleFileSelected(event)" />
-
-        <div class="dropzone-box" onclick="document.getElementById('file-payment-receipt').click()">
-          <i class="fa-solid fa-cloud-arrow-up"></i>
-          <h4 class="fs-6 text-white mb-1" id="dropzone-label">Pilih Foto Struk / Screenshot Transfer</h4>
-          <p class="text-muted small mb-0">Format JPG, PNG, atau PDF (Maksimal 5MB)</p>
-        </div>
-
-        <div id="file-preview-container" class="mt-3 d-none text-center">
-          <img id="file-preview-img" src="" alt="Preview Struk" class="img-thumbnail bg-dark border-secondary mb-2" style="max-height: 200px;" />
-          <div>
-            <span class="badge bg-secondary text-white" id="file-name-label">struk.jpg</span>
-            <button class="btn btn-sm btn-link text-danger text-decoration-none" onclick="removeSelectedFile()">Hapus</button>
-          </div>
-        </div>
-
-        <button type="button" class="btn btn-warning w-100 font-display fs-5 fw-bold py-3 mt-4" onclick="uploadReceiptAndFinish()">
-          <i class="fa-solid fa-paper-plane me-2"></i> Kirim Bukti Transfer
-        </button>
-      </div>
-
-      <div class="text-center mb-5">
-        <button class="btn btn-outline-secondary btn-sm" onclick="navigateTo('register')">
-          <i class="fa-solid fa-arrow-left me-1"></i> Kembali ke Halaman Pendaftaran
-        </button>
-      </div>
-
-    </div>
-  </section>
-
-  <!-- ============================================================
-       SECTION 3: CEK STATUS & TIKET SAYA (PUBLIK)
-       ============================================================ -->
-  <section id="section-status" class="app-section d-none">
-    <div class="app-container">
-      <div class="app-card">
-        <h2 class="section-title"><i class="fa-solid fa-ticket"></i> Cek Status Pendaftaran & Tiket</h2>
-        <p class="text-muted small">Masukkan Nomor WhatsApp atau Kode Booking Tiket Anda:</p>
-
-        <div class="input-group mb-3">
-          <input type="text" class="form-control" id="input-search-ticket" placeholder="Contoh: 081234567890 atau MKJ-2026-001" />
-          <button class="btn btn-warning fw-bold font-display" onclick="searchTicketStatus()">Cari Data</button>
-        </div>
-
-        <div id="ticket-result-container" class="d-none mt-4">
-          <!-- Hasil tracking tiket -->
-        </div>
-      </div>
-
-      <div class="text-center">
-        <button class="btn btn-outline-secondary btn-sm" onclick="navigateTo('register')">
-          <i class="fa-solid fa-arrow-left me-1"></i> Kembali ke Pendaftaran Baru
-        </button>
-      </div>
-    </div>
-  </section>
-
-  <!-- ============================================================
-       SECTION 4: LOGIN ADMIN
-       ============================================================ -->
-  <section id="section-admin-login" class="app-section d-none">
-    <div class="app-container" style="max-width: 420px; margin-top: 40px;">
-      <div class="app-card text-center">
-        <div class="display-6 text-warning mb-2"><i class="fa-solid fa-shield-halved"></i></div>
-        <h2 class="font-display text-white mb-1">PANEL ADMIN MKJ</h2>
-        <p class="text-muted small mb-4">Masuk untuk mengelola pendaftaran, verifikasi bayar, dan scan tiket.</p>
-
-        <form onsubmit="handleAdminLogin(event)">
-          <div class="mb-3 text-start">
-            <label class="form-label">Email Admin</label>
-            <input type="email" class="form-control" id="admin-email" placeholder="admin@mkj.com" required />
-          </div>
-          <div class="mb-4 text-start">
-            <label class="form-label">Password</label>
-            <input type="password" class="form-control" id="admin-password" placeholder="••••••••" required />
-          </div>
-
-          <button type="submit" class="btn btn-warning w-100 font-display fs-5 fw-bold py-2">
-            Masuk ke Dashboard <i class="fa-solid fa-right-to-bracket ms-1"></i>
-          </button>
-        </form>
-      </div>
-    </div>
-  </section>
-
-  <!-- ============================================================
-       SECTION 5: DASHBOARD ADMIN REALTIME
-       ============================================================ -->
-  <section id="section-admin-dashboard" class="app-section d-none">
-    <div class="dashboard-container">
-
-      <!-- Top Actions Bar -->
-      <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
-        <div>
-          <h1 class="font-display fs-2 mb-0">DASHBOARD PANITIA</h1>
-          <div class="d-flex align-items-center gap-2 mt-1">
-            <span class="badge bg-success" id="realtime-status-pill"><i class="fa-solid fa-bolt me-1"></i> Live Realtime Active</span>
-            <span class="text-muted small" id="last-sync-time">Tersinkronisasi otomatis</span>
-          </div>
-        </div>
-
-        <div class="d-flex gap-2">
-          <button class="btn btn-warning fw-bold font-display" onclick="navigateTo('admin-scanner')">
-            <i class="fa-solid fa-camera me-1"></i> Scan Tiket Venue
-          </button>
-          <button class="btn btn-outline-secondary" onclick="navigateTo('admin-merch')">
-            <i class="fa-solid fa-shirt me-1"></i> Katalog Merch
-          </button>
-          <button class="btn btn-outline-secondary" onclick="navigateTo('admin-config')">
-            <i class="fa-solid fa-gear me-1"></i> Pengaturan
-          </button>
-          <button class="btn btn-outline-danger" onclick="handleAdminLogout()">
-            <i class="fa-solid fa-power-off"></i>
-          </button>
-        </div>
-      </div>
-
-      <!-- KPI Metrics Cards -->
-      <div class="kpi-grid">
-        <div class="kpi-card">
-          <div class="kpi-label">Total Pendaftar</div>
-          <div class="kpi-value text-warning" id="kpi-total-reg">0</div>
-          <small class="text-muted">Pasang Ayah-Anak</small>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Total Dana Masuk (Verified)</div>
-          <div class="kpi-value text-success" id="kpi-total-money">Rp 0</div>
-          <small class="text-muted">Dana Lunas Terverifikasi</small>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Menunggu Verifikasi</div>
-          <div class="kpi-value text-warning" id="kpi-pending-count">0</div>
-          <small class="text-muted">Perlu Dicek Struk</small>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Check-in Hari-H</div>
-          <div class="kpi-value text-info" id="kpi-checkin-count">0 / 0</div>
-          <small class="text-muted" id="kpi-checkin-percent">0% Kehadiran</small>
-        </div>
-      </div>
-
-      <!-- Filter & Search Bar -->
-      <div class="app-card mb-3 p-3">
-        <div class="row g-2 align-items-center">
-          <div class="col-md-5">
-            <div class="input-group">
-              <span class="input-group-text bg-dark border-secondary text-muted"><i class="fa-solid fa-magnifying-glass"></i></span>
-              <input type="text" class="form-control" id="table-search-input" placeholder="Cari Nama Ayah, Anak, No WA, atau Kode Tiket..." oninput="filterRegistrationTable()" />
-            </div>
-          </div>
-          <div class="col-md-3">
-            <select class="form-select" id="filter-payment-status" onchange="filterRegistrationTable()">
-              <option value="all">Semua Status Bayar</option>
-              <option value="pending">Menunggu Verifikasi (Pending)</option>
-              <option value="verified">Lunas / Verified</option>
-              <option value="rejected">Ditolak / Rejected</option>
-            </select>
-          </div>
-          <div class="col-md-2">
-            <select class="form-select" id="filter-checkin-status" onchange="filterRegistrationTable()">
-              <option value="all">Semua Check-in</option>
-              <option value="checked">Sudah Check-in</option>
-              <option value="not_checked">Belum Check-in</option>
-            </select>
-          </div>
-          <div class="col-md-2 text-end">
-            <button class="btn btn-outline-success w-100" onclick="exportDataToCSV()">
-              <i class="fa-solid fa-file-csv me-1"></i> Export CSV
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Data Table -->
-      <div class="custom-table-container">
-        <table class="table-custom">
-          <thead>
-            <tr>
-              <th>Kode Tiket</th>
-              <th>Peserta (Ayah & Anak)</th>
-              <th>WhatsApp</th>
-              <th>Total & Merch</th>
-              <th>Bukti Bayar</th>
-              <th>Status Bayar</th>
-              <th>Check-in</th>
-              <th>Aksi</th>
-            </tr>
-          </thead>
-          <tbody id="registrations-tbody">
-            <!-- Data baris dinamis -->
-          </tbody>
-        </table>
-      </div>
-
-    </div>
-  </section>
-
-  <!-- ============================================================
-       SECTION 6: SMARTPHONE QR/BARCODE SCANNER
-       ============================================================ -->
-  <section id="section-admin-scanner" class="app-section d-none">
-    <div class="app-container" style="max-width: 500px;">
-
-      <div class="d-flex justify-content-between align-items-center my-3">
-        <button class="btn btn-sm btn-outline-secondary" onclick="navigateTo('admin-dashboard')">
-          <i class="fa-solid fa-arrow-left me-1"></i> Dashboard
-        </button>
-        <h2 class="font-display fs-4 mb-0 text-warning"><i class="fa-solid fa-qrcode me-1"></i> SCANNER VENUE</h2>
-        <div></div>
-      </div>
-
-      <div class="app-card text-center p-3">
-        <p class="text-muted small mb-2">Arahkan kamera smartphone ke QR Code tiket peserta:</p>
-
-        <!-- Viewfinder Kamera HTML5 -->
-        <div id="qr-reader" class="mb-3"></div>
-
-        <div class="d-flex justify-content-center gap-2">
-          <button class="btn btn-sm btn-outline-warning" onclick="restartScanner()">
-            <i class="fa-solid fa-arrows-rotate me-1"></i> Restart Kamera
-          </button>
-          <button class="btn btn-sm btn-outline-secondary" onclick="switchCamera()">
-            <i class="fa-solid fa-camera-rotate me-1"></i> Ganti Kamera
-          </button>
-        </div>
-      </div>
-
-      <!-- Manual Input Fallback -->
-      <div class="app-card">
-        <h3 class="section-title fs-6"><i class="fa-solid fa-keyboard"></i> Input Manual Kode Tiket</h3>
-        <div class="input-group">
-          <input type="text" class="form-control" id="manual-ticket-code" placeholder="Contoh: MKJ-2026-001" />
-          <button class="btn btn-warning font-display fw-bold" onclick="processTicketCheckin(document.getElementById('manual-ticket-code').value.trim())">
-            Check-in
-          </button>
-        </div>
-      </div>
-
-    </div>
-  </section>
-
-  <!-- ============================================================
-       SECTION 7: KELOLA KATALOG MERCHANDISE (ADMIN)
-       ============================================================ -->
-  <section id="section-admin-merch" class="app-section d-none">
-    <div class="app-container">
-      <div class="d-flex justify-content-between align-items-center my-3">
-        <button class="btn btn-sm btn-outline-secondary" onclick="navigateTo('admin-dashboard')">
-          <i class="fa-solid fa-arrow-left me-1"></i> Dashboard
-        </button>
-        <h2 class="font-display fs-4 mb-0">KELOLA MERCHANDISE</h2>
-        <button class="btn btn-sm btn-warning fw-bold" onclick="openAddMerchModal()">
-          <i class="fa-solid fa-plus me-1"></i> Tambah Item
-        </button>
-      </div>
-
-      <div class="app-card">
-        <div class="merch-grid" id="admin-merch-list">
-          <!-- List merch admin -->
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ============================================================
-       SECTION 8: PENGATURAN REKENING & EVENT (ADMIN)
-       ============================================================ -->
-  <section id="section-admin-config" class="app-section d-none">
-    <div class="app-container" style="max-width: 580px;">
-      <div class="d-flex justify-content-between align-items-center my-3">
-        <button class="btn btn-sm btn-outline-secondary" onclick="navigateTo('admin-dashboard')">
-          <i class="fa-solid fa-arrow-left me-1"></i> Dashboard
-        </button>
-        <h2 class="font-display fs-4 mb-0">PENGATURAN EVENT</h2>
-        <div></div>
-      </div>
-
-      <div class="app-card">
-        <form onsubmit="saveAppConfig(event)">
-          <div class="mb-3">
-            <label class="form-label">Nama Bank Rekening</label>
-            <input type="text" class="form-control" id="cfg-bank-name" required />
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Nomor Rekening</label>
-            <input type="text" class="form-control" id="cfg-bank-acc-num" required />
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Atas Nama Pemilik Rekening</label>
-            <input type="text" class="form-control" id="cfg-bank-acc-holder" required />
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Harga Tiket Event (Rp)</label>
-            <input type="number" class="form-control" id="cfg-ticket-price" required />
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Nomor WhatsApp Panitia / Admin</label>
-            <input type="text" class="form-control" id="cfg-admin-wa" required />
-          </div>
-
-          <button type="submit" class="btn btn-warning w-100 font-display fs-5 fw-bold py-2 mt-3">
-            <i class="fa-solid fa-floppy-disk me-1"></i> Simpan Pengaturan
-          </button>
-        </form>
-      </div>
-    </div>
-  </section>
-
-  <!-- ============================================================
-       MODALS
-       ============================================================ -->
-
-  <!-- Modal Preview Bukti Pembayaran -->
-  <div class="modal fade" id="modal-proof-preview" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
-      <div class="modal-content bg-dark border border-secondary text-white">
-        <div class="modal-header border-secondary">
-          <h5 class="modal-title font-display"><i class="fa-solid fa-receipt text-warning me-2"></i> Verifikasi Bukti Pembayaran</h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <div class="row g-3">
-            <div class="col-md-7 text-center">
-              <div class="p-2 bg-black rounded border border-secondary">
-                <img id="modal-proof-img" src="" alt="Bukti Transfer" class="img-fluid rounded" style="max-height: 400px;" />
+      <!-- Header Publik -->
+      <header class="public-header">
+        <div class="container py-3">
+          <div class="d-flex align-items-center justify-content-between">
+            <div class="d-flex align-items-center gap-3">
+              <div class="mkj-logo-badge">MKJ</div>
+              <div>
+                <div class="mkj-brand-name">MOTORAN KARO JASAK</div>
+                <div class="mkj-brand-sub" id="header-event-date">Event Touring Ayah &amp; Anak</div>
               </div>
             </div>
-            <div class="col-md-5">
-              <div class="p-3 bg-elevated rounded border border-secondary">
-                <h6 class="text-warning font-display mb-3">Detail Pesanan</h6>
-                <div class="mb-2 small">Kode: <strong class="text-white" id="modal-proof-code">-</strong></div>
-                <div class="mb-2 small">Ayah: <strong class="text-white" id="modal-proof-father">-</strong></div>
-                <div class="mb-2 small">Anak: <strong class="text-white" id="modal-proof-child">-</strong></div>
-                <div class="mb-2 small">Total Tagihan: <strong class="text-warning font-display fs-5" id="modal-proof-total">-</strong></div>
-                <div class="mb-3 small">Detail Merch: <span class="text-muted" id="modal-proof-merch">-</span></div>
+            <div class="d-flex align-items-center gap-2">
+              <button class="btn-icon-ghost" onclick="toggleDarkMode()" title="Toggle dark mode">
+                <i class="bi bi-circle-half" id="theme-icon"></i>
+              </button>
+              <a href="#" class="btn-admin-link" onclick="navigateTo('login'); return false;">
+                <i class="bi bi-shield-lock-fill me-1"></i>Admin
+              </a>
+            </div>
+          </div>
+        </div>
+      </header>
 
-                <div class="d-grid gap-2">
-                  <button class="btn btn-success fw-bold font-display py-2" onclick="confirmVerifyPayment('verified')">
-                    <i class="fa-solid fa-circle-check me-1"></i> Setujui / Lunas
+      <!-- Hero Banner -->
+      <div class="public-hero">
+        <div class="container">
+          <div class="hero-content text-center">
+            <div class="hero-badge mb-3">🏍️ EVENT RESMI 2026</div>
+            <h1 class="hero-title">GAS BARENG,<br>KENANGAN BARENG</h1>
+            <p class="hero-sub" id="hero-tagline">Bersama Ayah Tercinta — Event Motoran Spesial Ayah &amp; Anak</p>
+            <div class="hero-meta" id="hero-event-info">
+              <span><i class="bi bi-calendar3"></i> <span id="hero-date">Loading...</span></span>
+              <span><i class="bi bi-geo-alt-fill"></i> <span id="hero-location">Loading...</span></span>
+              <span><i class="bi bi-ticket-fill"></i> Tiket Rp <span id="hero-price">75.000</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Form Area -->
+      <div class="container py-4 pb-5">
+        <div class="row justify-content-center">
+          <div class="col-12 col-md-10 col-lg-8 col-xl-7">
+
+            <!-- ---- STEP 1: Data Peserta ---- -->
+            <div class="form-card mb-4">
+              <div class="form-card-header">
+                <div class="step-badge">1</div>
+                <div>
+                  <h2 class="form-card-title">Data Peserta &amp; Tiket</h2>
+                  <p class="form-card-sub">Isi data ayah dan anak yang akan mengikuti touring</p>
+                </div>
+                <div class="ticket-price-badge">Rp 75.000</div>
+              </div>
+              <div class="form-card-body">
+                <div class="row g-3">
+                  <div class="col-12 col-sm-6">
+                    <label class="form-label-custom">Nama Lengkap Ayah *</label>
+                    <input type="text" id="father-name" class="form-input-custom" placeholder="Contoh: Budi Santoso" required />
+                  </div>
+                  <div class="col-12 col-sm-6">
+                    <label class="form-label-custom">Nama Lengkap Anak *</label>
+                    <input type="text" id="child-name" class="form-input-custom" placeholder="Contoh: Arka Pratama" required />
+                  </div>
+                  <div class="col-12 col-sm-6">
+                    <label class="form-label-custom">Usia Anak (Tahun) *</label>
+                    <select id="child-age" class="form-input-custom">
+                      <option value="">Pilih usia...</option>
+                      <option value="3">3 Tahun</option>
+                      <option value="4">4 Tahun</option>
+                      <option value="5">5 Tahun</option>
+                      <option value="6">6 Tahun</option>
+                      <option value="7">7 Tahun</option>
+                      <option value="8">8 Tahun</option>
+                      <option value="9">9 Tahun</option>
+                      <option value="10">10 Tahun</option>
+                      <option value="11">11 Tahun</option>
+                      <option value="12">12 Tahun</option>
+                      <option value="13">13 Tahun</option>
+                      <option value="14">14+ Tahun</option>
+                    </select>
+                  </div>
+                  <div class="col-12 col-sm-6">
+                    <label class="form-label-custom">No. WhatsApp Aktif *</label>
+                    <input type="tel" id="whatsapp-number" class="form-input-custom" placeholder="0812-xxxx-xxxx" required />
+                    <small class="form-hint">Tiket barcode dikirim via WhatsApp</small>
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label-custom">Alamat Domisili Lengkap *</label>
+                    <textarea id="address" class="form-input-custom" rows="2" placeholder="Alamat lengkap untuk koordinasi rute touring..." required></textarea>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ---- STEP 2: Katalog Merchandise ---- -->
+            <div class="form-card mb-4">
+              <div class="form-card-header">
+                <div class="step-badge">2</div>
+                <div>
+                  <h2 class="form-card-title">Merchandise Resmi</h2>
+                  <p class="form-card-sub">Pilih merchandise eksklusif event (opsional)</p>
+                </div>
+              </div>
+              <div class="form-card-body">
+                <div id="merch-catalog-grid" class="merch-grid">
+                  <!-- Diisi oleh JavaScript -->
+                  <div class="text-center py-4 text-muted">
+                    <div class="spinner-border spinner-border-sm me-2"></div>
+                    Memuat katalog merchandise...
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ---- STEP 3: Ringkasan & Tombol Daftar ---- -->
+            <div class="order-summary-card mb-4">
+              <div class="order-summary-header">
+                <span class="order-summary-label">RINGKASAN PESANAN</span>
+              </div>
+              <div class="order-summary-body">
+                <div class="order-line">
+                  <span>Tiket Event</span>
+                  <span>Rp 75.000</span>
+                </div>
+                <div id="merch-summary-lines">
+                  <!-- Diisi JavaScript -->
+                </div>
+                <div class="order-total-line">
+                  <span>TOTAL TAGIHAN</span>
+                  <span id="grand-total-display">Rp 75.000</span>
+                </div>
+              </div>
+              <button id="btn-submit-reg" class="btn-primary-orange w-100" onclick="submitRegistration()">
+                <i class="bi bi-arrow-right-circle-fill me-2"></i>
+                Lanjut ke Pembayaran &amp; Upload Bukti
+              </button>
+            </div>
+
+          </div><!-- /col -->
+        </div><!-- /row -->
+      </div><!-- /container -->
+    </div><!-- /section-public -->
+
+
+    <!-- ======================================================= -->
+    <!-- SECTION: KONFIRMASI PEMBAYARAN & UPLOAD BUKTI           -->
+    <!-- ======================================================= -->
+    <div id="section-payment" class="app-section d-none">
+      <header class="public-header">
+        <div class="container py-3">
+          <div class="d-flex align-items-center gap-3">
+            <button class="btn-back" onclick="navigateTo('public')">
+              <i class="bi bi-arrow-left"></i>
+            </button>
+            <div class="mkj-logo-badge">MKJ</div>
+            <div class="mkj-brand-name">KONFIRMASI PEMBAYARAN</div>
+          </div>
+        </div>
+      </header>
+
+      <div class="container py-4 pb-5">
+        <div class="row justify-content-center">
+          <div class="col-12 col-md-8 col-lg-6">
+
+            <!-- Success Banner -->
+            <div class="success-banner mb-4">
+              <div class="success-icon"><i class="bi bi-check-circle-fill"></i></div>
+              <h2 class="success-title">PENDAFTARAN BERHASIL DICATAT!</h2>
+              <p class="success-sub">Selesaikan pembayaran untuk mengaktifkan tiket Anda</p>
+            </div>
+
+            <!-- Info Tiket -->
+            <div class="ticket-info-card mb-4">
+              <div class="ticket-info-header">
+                <span>DETAIL PENDAFTARAN</span>
+                <span id="pay-ticket-code" class="ticket-code-badge">MKJ-2026-XXXX</span>
+              </div>
+              <div class="ticket-info-body">
+                <div class="info-row"><span>Nama Ayah</span><strong id="pay-father-name">—</strong></div>
+                <div class="info-row"><span>Nama Anak</span><strong id="pay-child-name">—</strong></div>
+                <div class="info-row"><span>Tiket Event</span><strong>Rp 75.000</strong></div>
+                <div id="pay-merch-lines"></div>
+                <div class="info-row total"><span>TOTAL BAYAR</span><strong id="pay-grand-total" class="total-amount">Rp 75.000</strong></div>
+              </div>
+            </div>
+
+            <!-- Instruksi Transfer -->
+            <div class="bank-transfer-card mb-4">
+              <div class="bank-card-header">
+                <i class="bi bi-bank2 me-2"></i>INSTRUKSI TRANSFER BANK
+              </div>
+              <div class="bank-card-body">
+                <div class="bank-info-grid">
+                  <div class="bank-info-item">
+                    <span class="bank-label">BANK</span>
+                    <span class="bank-value" id="bank-name-display">BCA</span>
+                  </div>
+                  <div class="bank-info-item">
+                    <span class="bank-label">NO. REKENING</span>
+                    <div class="bank-account-wrap">
+                      <span class="bank-account" id="bank-account-display">1234567890</span>
+                      <button class="btn-copy" onclick="copyToClipboard('bank-account-display')" title="Salin nomor rekening">
+                        <i class="bi bi-copy"></i>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="bank-info-item">
+                    <span class="bank-label">ATAS NAMA</span>
+                    <span class="bank-value" id="bank-holder-display">—</span>
+                  </div>
+                  <div class="bank-info-item">
+                    <span class="bank-label">NOMINAL</span>
+                    <div class="bank-account-wrap">
+                      <span class="bank-account accent-orange" id="pay-amount-display">Rp 75.000</span>
+                      <button class="btn-copy" onclick="copyAmountToClipboard()" title="Salin nominal">
+                        <i class="bi bi-copy"></i>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div class="bank-note">
+                  <i class="bi bi-info-circle me-1"></i>
+                  Transfer sesuai nominal tepat agar verifikasi lebih cepat
+                </div>
+              </div>
+            </div>
+
+            <!-- Upload Bukti Bayar -->
+            <div class="form-card mb-4">
+              <div class="form-card-header">
+                <div class="step-badge">3</div>
+                <div>
+                  <h2 class="form-card-title">Upload Bukti Transfer</h2>
+                  <p class="form-card-sub">JPG/PNG/PDF, maks 5MB</p>
+                </div>
+              </div>
+              <div class="form-card-body">
+                <div id="upload-drop-zone" class="upload-drop-zone" onclick="document.getElementById('receipt-file').click()">
+                  <i class="bi bi-cloud-upload upload-icon"></i>
+                  <p class="upload-title">Klik atau drag &amp; drop file bukti transfer</p>
+                  <p class="upload-sub">Format: JPG, PNG, atau PDF • Maks 5MB</p>
+                  <input type="file" id="receipt-file" accept="image/*,.pdf" class="d-none" onchange="handleFileSelect(this)" />
+                </div>
+                <div id="file-preview-wrap" class="d-none mt-3">
+                  <div class="file-preview-item">
+                    <i class="bi bi-file-check-fill text-success me-2"></i>
+                    <span id="file-preview-name">—</span>
+                    <button class="btn-remove-file ms-auto" onclick="removeFile()">
+                      <i class="bi bi-x-circle-fill"></i>
+                    </button>
+                  </div>
+                </div>
+                <button id="btn-upload-receipt" class="btn-primary-orange w-100 mt-3" onclick="uploadReceipt()" disabled>
+                  <i class="bi bi-cloud-upload-fill me-2"></i>
+                  Kirim Bukti Pembayaran
+                </button>
+              </div>
+            </div>
+
+            <!-- Tagline -->
+            <div class="tagline-banner text-center mb-4">
+              <p class="tagline-text" id="tagline-display">"MOTORAN KARO JASAK — Gas Bareng, Kenangan Bareng, Bersama Ayah Tercinta."</p>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div><!-- /section-payment -->
+
+
+    <!-- ======================================================= -->
+    <!-- SECTION: STATUS PENDAFTARAN                             -->
+    <!-- ======================================================= -->
+    <div id="section-status" class="app-section d-none">
+      <header class="public-header">
+        <div class="container py-3">
+          <div class="d-flex align-items-center gap-3">
+            <button class="btn-back" onclick="navigateTo('public')">
+              <i class="bi bi-arrow-left"></i>
+            </button>
+            <div class="mkj-logo-badge">MKJ</div>
+            <div class="mkj-brand-name">STATUS PENDAFTARAN</div>
+          </div>
+        </div>
+      </header>
+
+      <div class="container py-4">
+        <div class="row justify-content-center">
+          <div class="col-12 col-md-7 col-lg-5">
+
+            <!-- Status Card -->
+            <div class="status-card mb-4" id="status-result-card">
+              <div class="status-icon-wrap" id="status-icon-area">
+                <i class="bi bi-hourglass-split status-icon pending" id="status-main-icon"></i>
+              </div>
+              <h2 class="status-title" id="status-title-text">PENDAFTARAN DALAM PROSES</h2>
+              <p class="status-subtitle" id="status-subtitle-text">Tim kami sedang memverifikasi bukti pembayaran Anda</p>
+
+              <div class="status-details" id="status-details-area">
+                <div class="info-row"><span>Kode Tiket</span><strong id="st-ticket-code">—</strong></div>
+                <div class="info-row"><span>Nama Ayah</span><strong id="st-father-name">—</strong></div>
+                <div class="info-row"><span>Nama Anak</span><strong id="st-child-name">—</strong></div>
+                <div class="info-row"><span>Total Tagihan</span><strong id="st-grand-total">—</strong></div>
+                <div class="info-row"><span>Status Bayar</span><strong id="st-payment-status">—</strong></div>
+                <div class="info-row"><span>Status Check-in</span><strong id="st-checkin-status">—</strong></div>
+              </div>
+            </div>
+
+            <!-- Cek Status Form -->
+            <div class="form-card">
+              <div class="form-card-header">
+                <div class="step-badge"><i class="bi bi-search"></i></div>
+                <div>
+                  <h2 class="form-card-title">Cek Status Tiket</h2>
+                  <p class="form-card-sub">Masukkan kode tiket Anda</p>
+                </div>
+              </div>
+              <div class="form-card-body">
+                <div class="input-group-custom">
+                  <input type="text" id="check-ticket-code" class="form-input-custom" placeholder="Contoh: MKJ-2026-0001" />
+                  <button class="btn-primary-orange" onclick="checkTicketStatus()">
+                    <i class="bi bi-search me-1"></i>Cek
                   </button>
-                  <button class="btn btn-outline-danger fw-bold font-display" onclick="confirmVerifyPayment('rejected')">
-                    <i class="fa-solid fa-circle-xmark me-1"></i> Tolak Pembayaran
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div><!-- /section-status -->
+
+
+    <!-- ======================================================= -->
+    <!-- SECTION: LOGIN ADMIN                                    -->
+    <!-- ======================================================= -->
+    <div id="section-login" class="app-section d-none">
+      <div class="login-page">
+        <div class="login-card">
+          <div class="login-logo">
+            <div class="mkj-logo-badge lg">MKJ</div>
+          </div>
+          <h2 class="login-title">ADMIN PORTAL</h2>
+          <p class="login-sub">Motoran Karo Jasak — Event Management</p>
+
+          <div class="mb-3">
+            <label class="form-label-custom">Email Admin</label>
+            <input type="email" id="login-email" class="form-input-custom" placeholder="admin@mkj.id" />
+          </div>
+          <div class="mb-4">
+            <label class="form-label-custom">Password</label>
+            <div class="password-wrap">
+              <input type="password" id="login-password" class="form-input-custom" placeholder="Password" onkeydown="if(event.key==='Enter')signIn()" />
+              <button class="btn-toggle-pass" onclick="togglePassword('login-password', this)">
+                <i class="bi bi-eye"></i>
+              </button>
+            </div>
+          </div>
+          <button class="btn-primary-orange w-100" onclick="signIn()">
+            <i class="bi bi-shield-lock-fill me-2"></i>Masuk ke Dashboard Admin
+          </button>
+          <div class="login-back mt-3 text-center">
+            <a href="#" onclick="navigateTo('public'); return false;" class="text-muted small">
+              ← Kembali ke halaman pendaftaran
+            </a>
+          </div>
+        </div>
+      </div>
+    </div><!-- /section-login -->
+
+
+    <!-- ======================================================= -->
+    <!-- SECTION: DASHBOARD ADMIN                                -->
+    <!-- ======================================================= -->
+    <div id="section-dashboard" class="app-section d-none">
+
+      <!-- Admin Navbar -->
+      <nav class="admin-navbar">
+        <div class="admin-nav-brand">
+          <div class="mkj-logo-badge sm">MKJ</div>
+          <span class="admin-nav-title">Admin Panel</span>
+        </div>
+        <div class="admin-nav-menu">
+          <button class="admin-nav-item active" data-section="overview" onclick="switchAdminTab('overview', this)">
+            <i class="bi bi-speedometer2"></i>
+            <span>Dashboard</span>
+          </button>
+          <button class="admin-nav-item" data-section="registrations" onclick="switchAdminTab('registrations', this)">
+            <i class="bi bi-people-fill"></i>
+            <span>Peserta</span>
+          </button>
+          <button class="admin-nav-item" data-section="merchandise" onclick="switchAdminTab('merchandise', this)">
+            <i class="bi bi-bag-fill"></i>
+            <span>Merch</span>
+          </button>
+          <button class="admin-nav-item" data-section="scanner" onclick="switchAdminTab('scanner', this)">
+            <i class="bi bi-qr-code-scan"></i>
+            <span>Scan QR</span>
+          </button>
+          <button class="admin-nav-item" data-section="settings" onclick="switchAdminTab('settings', this)">
+            <i class="bi bi-gear-fill"></i>
+            <span>Pengaturan</span>
+          </button>
+        </div>
+        <div class="admin-nav-actions">
+          <button class="btn-icon-ghost" onclick="toggleDarkMode()" title="Toggle tema">
+            <i class="bi bi-circle-half"></i>
+          </button>
+          <span class="admin-user-badge" id="admin-user-name">Admin</span>
+          <button class="btn-logout" onclick="signOut()">
+            <i class="bi bi-box-arrow-right"></i>
+          </button>
+        </div>
+      </nav>
+
+      <!-- Admin Content Area -->
+      <div class="admin-content">
+
+        <!-- ---- TAB: OVERVIEW DASHBOARD ---- -->
+        <div id="admin-tab-overview" class="admin-tab active">
+          <div class="admin-page-header">
+            <h1 class="admin-page-title">Dashboard Realtime</h1>
+            <div class="admin-header-actions">
+              <div class="realtime-dot"><span class="dot-pulse"></span>Live</div>
+              <button class="btn-sm-outline" onclick="loadDashboard()">
+                <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+              </button>
+            </div>
+          </div>
+
+          <!-- KPI Cards -->
+          <div class="kpi-grid mb-4">
+            <div class="kpi-card">
+              <div class="kpi-icon orange"><i class="bi bi-people-fill"></i></div>
+              <div>
+                <div class="kpi-value" id="kpi-total">0</div>
+                <div class="kpi-label">Total Pendaftar</div>
+              </div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-icon green"><i class="bi bi-cash-coin"></i></div>
+              <div>
+                <div class="kpi-value" id="kpi-revenue">Rp 0</div>
+                <div class="kpi-label">Uang Masuk Terverifikasi</div>
+              </div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-icon blue"><i class="bi bi-hourglass-split"></i></div>
+              <div>
+                <div class="kpi-value" id="kpi-pending">0</div>
+                <div class="kpi-label">Menunggu Verifikasi</div>
+              </div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-icon yellow"><i class="bi bi-qr-code-scan"></i></div>
+              <div>
+                <div class="kpi-value" id="kpi-checkin">0 / 0</div>
+                <div class="kpi-label">Check-in vs Belum</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Charts Row -->
+          <div class="row g-3 mb-4">
+            <div class="col-12 col-md-7">
+              <div class="chart-card">
+                <div class="chart-card-header">
+                  <span>Status Pembayaran</span>
+                </div>
+                <div class="chart-body">
+                  <canvas id="chart-payment-status" height="200"></canvas>
+                </div>
+              </div>
+            </div>
+            <div class="col-12 col-md-5">
+              <div class="chart-card">
+                <div class="chart-card-header">
+                  <span>Pendaftaran per Hari</span>
+                </div>
+                <div class="chart-body">
+                  <canvas id="chart-daily-reg" height="200"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- AI Insight -->
+          <div class="ai-insight-card mb-4">
+            <div class="ai-insight-header">
+              <i class="bi bi-lightbulb-fill me-2 text-warning"></i>
+              <span>Ringkasan AI</span>
+            </div>
+            <p class="ai-insight-text" id="ai-insight-text">Memuat analisis data...</p>
+          </div>
+
+          <!-- Tabel Pendaftaran Terbaru -->
+          <div class="data-table-card">
+            <div class="data-table-header">
+              <span>Pendaftaran Terbaru</span>
+              <button class="btn-sm-outline" onclick="switchAdminTab('registrations', document.querySelector('[data-section=registrations]'))">
+                Lihat Semua <i class="bi bi-arrow-right ms-1"></i>
+              </button>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table" id="recent-reg-table">
+                <thead>
+                  <tr>
+                    <th>Kode Tiket</th>
+                    <th>Nama Ayah</th>
+                    <th>Nama Anak</th>
+                    <th>Total</th>
+                    <th>Status</th>
+                    <th>Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="recent-reg-tbody">
+                  <tr><td colspan="6" class="text-center text-muted py-3">Memuat data...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ---- TAB: DAFTAR PESERTA ---- -->
+        <div id="admin-tab-registrations" class="admin-tab d-none">
+          <div class="admin-page-header">
+            <h1 class="admin-page-title">Data Peserta</h1>
+            <div class="admin-header-actions">
+              <div class="search-box">
+                <i class="bi bi-search"></i>
+                <input type="text" id="search-reg" placeholder="Cari nama, kode tiket..." oninput="filterRegistrations(this.value)" />
+              </div>
+              <select id="filter-status" class="filter-select" onchange="filterRegistrations(document.getElementById('search-reg').value)">
+                <option value="">Semua Status</option>
+                <option value="pending">Pending</option>
+                <option value="verified">Verified</option>
+                <option value="rejected">Rejected</option>
+              </select>
+              <button class="btn-sm-outline" onclick="exportCSV()">
+                <i class="bi bi-download me-1"></i>Export CSV
+              </button>
+            </div>
+          </div>
+          <div class="data-table-card">
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Kode Tiket</th>
+                    <th>Nama Ayah</th>
+                    <th>Nama Anak</th>
+                    <th>Usia</th>
+                    <th>WhatsApp</th>
+                    <th>Total Bayar</th>
+                    <th>Status</th>
+                    <th>Check-in</th>
+                    <th>Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="all-reg-tbody">
+                  <tr><td colspan="9" class="text-center text-muted py-3">Memuat data...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ---- TAB: MASTER MERCHANDISE ---- -->
+        <div id="admin-tab-merchandise" class="admin-tab d-none">
+          <div class="admin-page-header">
+            <h1 class="admin-page-title">Master Merchandise</h1>
+            <button class="btn-primary-orange" onclick="openMerchModal()">
+              <i class="bi bi-plus-lg me-1"></i>Tambah Item
+            </button>
+          </div>
+          <div class="data-table-card">
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Nama Item</th>
+                    <th>Harga</th>
+                    <th>Ukuran Tersedia</th>
+                    <th>Warna Tersedia</th>
+                    <th>Status</th>
+                    <th>Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="merch-admin-tbody">
+                  <tr><td colspan="6" class="text-center text-muted py-3">Memuat data...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ---- TAB: SCANNER QR ---- -->
+        <div id="admin-tab-scanner" class="admin-tab d-none">
+          <div class="admin-page-header">
+            <h1 class="admin-page-title">Scanner Check-in</h1>
+          </div>
+          <div class="row justify-content-center">
+            <div class="col-12 col-md-8 col-lg-5">
+              <div class="scanner-card mb-4">
+                <div class="scanner-viewport" id="scanner-viewport">
+                  <video id="scanner-video" class="scanner-video" autoplay muted playsinline></video>
+                  <div class="scanner-overlay">
+                    <div class="scanner-frame">
+                      <div class="scan-corner tl"></div>
+                      <div class="scan-corner tr"></div>
+                      <div class="scan-corner bl"></div>
+                      <div class="scan-corner br"></div>
+                      <div class="scan-line" id="scan-line"></div>
+                    </div>
+                  </div>
+                  <div class="scanner-placeholder" id="scanner-placeholder">
+                    <i class="bi bi-camera-video-off text-muted" style="font-size:3rem"></i>
+                    <p class="text-muted mt-2">Kamera belum aktif</p>
+                  </div>
+                </div>
+                <div class="scanner-controls">
+                  <button class="btn-primary-orange w-100" id="btn-start-scan" onclick="startScanner()">
+                    <i class="bi bi-camera-fill me-2"></i>Aktifkan Kamera &amp; Scan
+                  </button>
+                  <button class="btn-sm-outline w-100 mt-2 d-none" id="btn-stop-scan" onclick="stopScanner()">
+                    <i class="bi bi-stop-circle me-1"></i>Hentikan Scanner
+                  </button>
+                </div>
+              </div>
+
+              <!-- Manual Input -->
+              <div class="form-card mb-4">
+                <div class="form-card-header">
+                  <div class="step-badge"><i class="bi bi-keyboard"></i></div>
+                  <div>
+                    <h2 class="form-card-title">Input Manual</h2>
+                    <p class="form-card-sub">Masukkan kode tiket secara manual</p>
+                  </div>
+                </div>
+                <div class="form-card-body">
+                  <div class="input-group-custom">
+                    <input type="text" id="manual-ticket-code" class="form-input-custom text-uppercase"
+                      placeholder="MKJ-2026-XXXX" onkeydown="if(event.key==='Enter')processCheckin(this.value)" />
+                    <button class="btn-primary-orange" onclick="processCheckin(document.getElementById('manual-ticket-code').value)">
+                      <i class="bi bi-check-lg me-1"></i>Check-in
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Hasil Scan -->
+              <div id="scan-result-area" class="d-none">
+                <div class="scan-result-card" id="scan-result-card">
+                  <div class="scan-result-icon" id="scan-result-icon"></div>
+                  <div class="scan-result-message" id="scan-result-message"></div>
+                  <div class="scan-result-detail" id="scan-result-detail"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ---- TAB: PENGATURAN ---- -->
+        <div id="admin-tab-settings" class="admin-tab d-none">
+          <div class="admin-page-header">
+            <h1 class="admin-page-title">Pengaturan Aplikasi</h1>
+          </div>
+          <div class="row">
+            <div class="col-12 col-lg-8">
+              <div class="form-card mb-4">
+                <div class="form-card-header">
+                  <div class="step-badge"><i class="bi bi-gear-fill"></i></div>
+                  <div>
+                    <h2 class="form-card-title">Informasi Event</h2>
+                    <p class="form-card-sub">Konfigurasi detail event dan rekening bank</p>
+                  </div>
+                </div>
+                <div class="form-card-body">
+                  <div class="row g-3">
+                    <div class="col-12">
+                      <label class="form-label-custom">Nama Aplikasi</label>
+                      <input type="text" id="cfg-appName" class="form-input-custom" />
+                    </div>
+                    <div class="col-12 col-sm-6">
+                      <label class="form-label-custom">Tanggal Event</label>
+                      <input type="date" id="cfg-eventDate" class="form-input-custom" />
+                    </div>
+                    <div class="col-12 col-sm-6">
+                      <label class="form-label-custom">Lokasi Event</label>
+                      <input type="text" id="cfg-eventLocation" class="form-input-custom" />
+                    </div>
+                    <div class="col-12 col-sm-6">
+                      <label class="form-label-custom">Harga Tiket (Rp)</label>
+                      <input type="number" id="cfg-ticketPrice" class="form-input-custom" />
+                    </div>
+                    <div class="col-12 col-sm-6">
+                      <label class="form-label-custom">WhatsApp Admin</label>
+                      <input type="text" id="cfg-whatsappAdmin" class="form-input-custom" placeholder="628xxx" />
+                    </div>
+                    <div class="col-12 col-sm-6">
+                      <label class="form-label-custom">Nama Bank</label>
+                      <input type="text" id="cfg-bankName" class="form-input-custom" />
+                    </div>
+                    <div class="col-12 col-sm-6">
+                      <label class="form-label-custom">No. Rekening</label>
+                      <input type="text" id="cfg-bankAccount" class="form-input-custom" />
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label-custom">Nama Pemegang Rekening</label>
+                      <input type="text" id="cfg-bankHolder" class="form-input-custom" />
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label-custom">Tagline Event</label>
+                      <input type="text" id="cfg-tagline" class="form-input-custom" />
+                    </div>
+                  </div>
+                  <button class="btn-primary-orange mt-4" onclick="saveSettings()">
+                    <i class="bi bi-floppy-fill me-2"></i>Simpan Pengaturan
                   </button>
                 </div>
               </div>
             </div>
           </div>
         </div>
+
+      </div><!-- /admin-content -->
+    </div><!-- /section-dashboard -->
+
+  </div><!-- /app -->
+
+
+  <!-- ============================================================ -->
+  <!-- MODAL: VERIFIKASI BUKTI BAYAR                               -->
+  <!-- ============================================================ -->
+  <div class="modal-overlay d-none" id="modal-verify">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 class="modal-title" id="modal-verify-title">Detail Pendaftaran</h3>
+        <button class="modal-close" onclick="closeModal('modal-verify')"><i class="bi bi-x-lg"></i></button>
       </div>
-    </div>
-  </div>
-
-  <!-- Modal Hasil Scan Check-in Tiket -->
-  <div class="modal fade" id="modal-scan-result" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content bg-dark border border-warning text-white text-center p-3">
-        <div class="modal-body">
-          <div id="scan-icon-container" class="display-3 mb-2"></div>
-          <h2 class="font-display mb-1" id="scan-result-title">STATUS TIKET</h2>
-          <p class="text-muted small" id="scan-result-subtitle"></p>
-
-          <div class="app-card text-start my-3 p-3 bg-elevated border-secondary" id="scan-result-details">
-            <!-- Rincian tiket peserta -->
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-12 col-md-6">
+            <div class="proof-preview-wrap" id="proof-preview-area">
+              <div class="proof-placeholder">
+                <i class="bi bi-image text-muted" style="font-size:3rem"></i>
+                <p class="text-muted mt-2 small">Tidak ada bukti bayar</p>
+              </div>
+            </div>
           </div>
-
-          <button type="button" class="btn btn-warning w-100 font-display fs-5 fw-bold" data-bs-dismiss="modal" onclick="restartScanner()">
-            Lanjut Scan Berikutnya <i class="fa-solid fa-arrow-right ms-1"></i>
-          </button>
+          <div class="col-12 col-md-6">
+            <div class="verify-info-list" id="verify-info-list">
+              <!-- Diisi JavaScript -->
+            </div>
+          </div>
         </div>
       </div>
+      <div class="modal-footer">
+        <button class="btn-danger" id="btn-reject" onclick="updatePaymentStatus('rejected')">
+          <i class="bi bi-x-circle-fill me-1"></i>Tolak
+        </button>
+        <button class="btn-success" id="btn-verify" onclick="updatePaymentStatus('verified')">
+          <i class="bi bi-check-circle-fill me-1"></i>Verifikasi
+        </button>
+      </div>
     </div>
   </div>
 
-  <!-- JS Dependencies -->
+  <!-- ============================================================ -->
+  <!-- MODAL: TAMBAH/EDIT MERCHANDISE                              -->
+  <!-- ============================================================ -->
+  <div class="modal-overlay d-none" id="modal-merch">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 class="modal-title" id="modal-merch-title">Tambah Merchandise</h3>
+        <button class="modal-close" onclick="closeModal('modal-merch')"><i class="bi bi-x-lg"></i></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="merch-id" />
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label-custom">Nama Item *</label>
+            <input type="text" id="merch-name" class="form-input-custom" />
+          </div>
+          <div class="col-12">
+            <label class="form-label-custom">Deskripsi</label>
+            <textarea id="merch-desc" class="form-input-custom" rows="2"></textarea>
+          </div>
+          <div class="col-12 col-sm-6">
+            <label class="form-label-custom">Harga (Rp) *</label>
+            <input type="number" id="merch-price" class="form-input-custom" min="0" />
+          </div>
+          <div class="col-12 col-sm-6">
+            <label class="form-label-custom">URL Foto</label>
+            <input type="url" id="merch-photo" class="form-input-custom" placeholder="https://..." />
+          </div>
+          <div class="col-12">
+            <label class="form-label-custom">Ukuran Tersedia (pisahkan dengan koma)</label>
+            <input type="text" id="merch-sizes" class="form-input-custom" placeholder="S, M, L, XL, XXL" />
+          </div>
+          <div class="col-12">
+            <label class="form-label-custom">Warna Tersedia (pisahkan dengan koma)</label>
+            <input type="text" id="merch-colors" class="form-input-custom" placeholder="Hitam, Putih, Orange" />
+          </div>
+          <div class="col-12">
+            <label class="form-label-custom">Status</label>
+            <select id="merch-active" class="form-input-custom">
+              <option value="true">Aktif (Tampil di katalog)</option>
+              <option value="false">Nonaktif (Tersembunyi)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-sm-outline" onclick="closeModal('modal-merch')">Batal</button>
+        <button class="btn-primary-orange" onclick="saveMerch()">
+          <i class="bi bi-floppy-fill me-1"></i>Simpan
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- CDN Scripts                                                  -->
+  <!-- ============================================================ -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://unpkg.com/html5-qrcode"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- html5-qrcode untuk scanner barcode/QR -->
+  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
