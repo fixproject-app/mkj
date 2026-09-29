@@ -8,10 +8,10 @@
 
 // ── Konfigurasi Supabase ──
 // Ganti dengan Project URL dan Anon Key dari dashboard Supabase Anda
-const SUPABASE_URL      = 'https://srsifsztyrwsjijismvu.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_5y0_SGaMs4orUa73JtAC5A_iylznVCP';
+const SUPABASE_URL      = 'sb_publishable_5y0_SGaMs4orUa73JtAC5A_iylznVCP';
+const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY';
 
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ── State Global ──
 let currentProfile    = null;
@@ -164,7 +164,7 @@ async function signIn() {
   }
 
   const result = await callSupabase(
-    supabase.auth.signInWithPassword({ email, password }),
+    supabaseClient.auth.signInWithPassword({ email, password }),
     'Login berhasil! Selamat datang.'
   );
 
@@ -176,15 +176,15 @@ async function signIn() {
 
 async function signOut() {
   stopScanner();
-  if (realtimeChannel) { supabase.removeChannel(realtimeChannel); realtimeChannel = null; }
-  await supabase.auth.signOut();
+  if (realtimeChannel) { supabaseClient.removeChannel(realtimeChannel); realtimeChannel = null; }
+  await supabaseClient.auth.signOut();
   currentProfile = null;
   navigateTo('login');
 }
 
 async function loadCurrentProfile(userId) {
   const result = await callSupabase(
-    supabase.from('profiles').select('*').eq('id', userId).single()
+    supabaseClient.from('profiles').select('*').eq('id', userId).single()
   );
   if (result.success) {
     currentProfile = result.data;
@@ -201,7 +201,7 @@ function togglePassword(inputId, btn) {
 }
 
 // Pantau status auth Supabase
-supabase.auth.onAuthStateChange((event, session) => {
+supabaseClient.auth.onAuthStateChange((event, session) => {
   if (session) {
     loadCurrentProfile(session.user.id);
     if (document.getElementById('section-login')?.classList.contains('d-none') === false) {
@@ -220,7 +220,7 @@ async function loadPublicPage() {
 
 async function loadAppConfig() {
   const result = await callSupabase(
-    supabase.from('app_config').select('*')
+    supabaseClient.from('app_config').select('*')
   );
   if (!result.success) return;
 
@@ -258,7 +258,7 @@ async function loadAppConfig() {
    ============================================================ */
 async function loadMerchCatalog() {
   const result = await callSupabase(
-    supabase.from('merchandise_items').select('*').eq('is_active', true).order('created_at')
+    supabaseClient.from('merchandise_items').select('*').eq('is_active', true).order('created_at')
   );
   if (!result.success) return;
 
@@ -393,7 +393,7 @@ async function submitRegistration() {
 
   // Insert ke tabel registrations
   const regResult = await callSupabase(
-    supabase.from('registrations').insert({
+    supabaseClient.from('registrations').insert({
       ticket_code:    ticketCode,
       father_name:    fatherName,
       child_name:     childName,
@@ -427,7 +427,7 @@ async function submitRegistration() {
 
   if (merchItems.length > 0) {
     await callSupabase(
-      supabase.from('registration_merchandise').insert(merchItems),
+      supabaseClient.from('registration_merchandise').insert(merchItems),
       null
     );
   }
@@ -499,15 +499,15 @@ async function uploadReceipt() {
 
   showLoading();
   try {
-    const { data: uploadData, error: uploadErr } = await supabase.storage
+    const { data: uploadData, error: uploadErr } = await supabaseClient.storage
       .from('payment-receipts').upload(path, selectedFile);
     if (uploadErr) throw uploadErr;
 
-    const { data: urlData } = supabase.storage.from('payment-receipts').getPublicUrl(path);
+    const { data: urlData } = supabaseClient.storage.from('payment-receipts').getPublicUrl(path);
     const publicUrl = urlData.publicUrl;
 
     // Update registrasi dengan URL bukti bayar
-    const { error: updateErr } = await supabase.from('registrations')
+    const { error: updateErr } = await supabaseClient.from('registrations')
       .update({ payment_receipt_url: publicUrl })
       .eq('id', currentRegId);
     if (updateErr) throw updateErr;
@@ -575,7 +575,7 @@ async function checkTicketStatus(codeOverride) {
   if (!code) { showToast('Masukkan kode tiket terlebih dahulu.', 'error'); return; }
 
   const result = await callSupabase(
-    supabase.from('registrations').select('*').eq('ticket_code', code).single()
+    supabaseClient.from('registrations').select('*').eq('ticket_code', code).single()
   );
 
   if (!result.success || !result.data) {
@@ -626,7 +626,7 @@ function renderStatusPage(reg) {
    ============================================================ */
 async function loadDashboard() {
   const result = await callSupabase(
-    supabase.from('registrations').select('*').order('created_at', { ascending: false })
+    supabaseClient.from('registrations').select('*').order('created_at', { ascending: false })
   );
   if (!result.success) return;
 
@@ -786,7 +786,7 @@ function renderAIInsight(data) {
    ============================================================ */
 async function loadAllRegistrations() {
   const result = await callSupabase(
-    supabase.from('registrations').select('*').order('created_at', { ascending: false })
+    supabaseClient.from('registrations').select('*').order('created_at', { ascending: false })
   );
   if (!result.success) return;
   allRegistrations = result.data;
@@ -856,7 +856,7 @@ function exportCSV() {
    ============================================================ */
 async function openVerifyModal(regId) {
   const result = await callSupabase(
-    supabase.from('registrations').select(`*, registration_merchandise(*)`).eq('id', regId).single()
+    supabaseClient.from('registrations').select(`*, registration_merchandise(*)`).eq('id', regId).single()
   );
   if (!result.success) return;
 
@@ -905,7 +905,7 @@ async function openVerifyModal(regId) {
 async function updatePaymentStatus(newStatus) {
   if (!activeVerifyId) return;
   const result = await callSupabase(
-    supabase.from('registrations').update({ payment_status: newStatus }).eq('id', activeVerifyId).select().single(),
+    supabaseClient.from('registrations').update({ payment_status: newStatus }).eq('id', activeVerifyId).select().single(),
     newStatus === 'verified' ? 'Pembayaran berhasil diverifikasi!' : 'Pembayaran ditolak.'
   );
   if (result.success) {
@@ -918,7 +918,7 @@ async function updatePaymentStatus(newStatus) {
 async function deleteRegistration(regId, ticketCode) {
   if (!confirm(`Hapus pendaftaran ${ticketCode}? Tindakan ini tidak bisa dibatalkan.`)) return;
   const result = await callSupabase(
-    supabase.from('registrations').delete().eq('id', regId),
+    supabaseClient.from('registrations').delete().eq('id', regId),
     `Pendaftaran ${ticketCode} berhasil dihapus.`
   );
   if (result.success) { loadAllRegistrations(); loadDashboard(); }
@@ -929,7 +929,7 @@ async function deleteRegistration(regId, ticketCode) {
    ============================================================ */
 async function loadMerchAdmin() {
   const result = await callSupabase(
-    supabase.from('merchandise_items').select('*').order('created_at')
+    supabaseClient.from('merchandise_items').select('*').order('created_at')
   );
   if (!result.success) return;
 
@@ -976,7 +976,7 @@ async function openMerchModal(itemId) {
   if (itemId) {
     document.getElementById('modal-merch-title').textContent = 'Edit Merchandise';
     const result = await callSupabase(
-      supabase.from('merchandise_items').select('*').eq('id', itemId).single()
+      supabaseClient.from('merchandise_items').select('*').eq('id', itemId).single()
     );
     if (result.success) {
       const it = result.data;
@@ -1015,8 +1015,8 @@ async function saveMerch() {
   };
 
   const promise = id
-    ? supabase.from('merchandise_items').update(payload).eq('id', id).select().single()
-    : supabase.from('merchandise_items').insert(payload).select().single();
+    ? supabaseClient.from('merchandise_items').update(payload).eq('id', id).select().single()
+    : supabaseClient.from('merchandise_items').insert(payload).select().single();
 
   const result = await callSupabase(promise, id ? 'Merchandise berhasil diperbarui.' : 'Merchandise berhasil ditambahkan.');
   if (result.success) { closeModal('modal-merch'); loadMerchAdmin(); }
@@ -1025,7 +1025,7 @@ async function saveMerch() {
 async function deleteMerch(itemId, name) {
   if (!confirm(`Hapus "${name}"? Stok pesanan terdahulu tidak terpengaruh.`)) return;
   const result = await callSupabase(
-    supabase.from('merchandise_items').delete().eq('id', itemId),
+    supabaseClient.from('merchandise_items').delete().eq('id', itemId),
     `"${name}" berhasil dihapus.`
   );
   if (result.success) loadMerchAdmin();
@@ -1095,7 +1095,7 @@ async function processCheckin(rawCode) {
   if (!code) { showToast('Masukkan kode tiket.', 'error'); return; }
 
   const result = await callSupabase(
-    supabase.from('registrations').select('*').eq('ticket_code', code).single()
+    supabaseClient.from('registrations').select('*').eq('ticket_code', code).single()
   );
 
   const resultArea = document.getElementById('scan-result-area');
@@ -1137,7 +1137,7 @@ async function processCheckin(rawCode) {
 
   // Proses check-in
   const updateResult = await callSupabase(
-    supabase.from('registrations').update({
+    supabaseClient.from('registrations').update({
       checkin_status: true,
       checkin_at: new Date().toISOString()
     }).eq('id', reg.id),
@@ -1177,7 +1177,7 @@ function playBeep(success) {
    PENGATURAN ADMIN
    ============================================================ */
 async function loadSettings() {
-  const result = await callSupabase(supabase.from('app_config').select('*'));
+  const result = await callSupabase(supabaseClient.from('app_config').select('*'));
   if (!result.success) return;
 
   const config = {};
@@ -1217,7 +1217,7 @@ async function saveSettings() {
     .map(([key, value]) => ({ key, value }));
 
   const result = await callSupabase(
-    supabase.from('app_config').upsert(upserts, { onConflict: 'key' }),
+    supabaseClient.from('app_config').upsert(upserts, { onConflict: 'key' }),
     'Pengaturan berhasil disimpan!'
   );
 
@@ -1229,13 +1229,13 @@ async function saveSettings() {
    ============================================================ */
 function subscribeRealtime() {
   if (realtimeChannel) return; // Sudah subscribe
-  realtimeChannel = supabase
+  realtimeChannel = supabaseClient
     .channel('realtime:registrations')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'registrations' }, () => {
       // Reload dashboard secara silent saat ada perubahan
       loadAllRegistrations();
       callSupabase(
-        supabase.from('registrations').select('*').order('created_at', { ascending: false })
+        supabaseClient.from('registrations').select('*').order('created_at', { ascending: false })
       ).then(result => {
         if (result.success) {
           allRegistrations = result.data;
@@ -1278,7 +1278,7 @@ document.addEventListener('click', (e) => {
    ============================================================ */
 (async function init() {
   // Cek apakah user sudah login
-  const { data: { session } } = await supabase.auth.getSession();
+  const { data: { session } } = await supabaseClient.auth.getSession();
   if (session) {
     await loadCurrentProfile(session.user.id);
     navigateTo('dashboard');
