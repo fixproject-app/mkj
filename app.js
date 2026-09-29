@@ -1,1182 +1,1288 @@
-// ============================================================
-// MKJ Web (Motoran Karo Jasak #1) — Client Logic (app.js)
-// Single Page Application (SPA) Controller with Supabase Client
-// ============================================================
+/* ============================================================
+   MKJ Web — app.js
+   Motoran Karo Jasak — Sistem Pendaftaran & Merchandise Event
+   Supabase SPA Client
+   ============================================================ */
 
-// 1. Konfigurasi Supabase Project (Ganti dengan kredensial project Anda)
-const SUPABASE_URL = 'https://srsifsztyrwsjijismvu.supabase.co';
+'use strict';
+
+// ── Konfigurasi Supabase ──
+// Ganti dengan Project URL dan Anon Key dari dashboard Supabase Anda
+const SUPABASE_URL      = 'https://srsifsztyrwsjijismvu.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_5y0_SGaMs4orUa73JtAC5A_iylznVCP';
 
-const supabase = (typeof window.supabase !== 'undefined' && SUPABASE_URL.indexOf('YOUR_PROJECT') === -1)
-  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
-  : null;
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// State Aplikasi Global
-let appState = {
-  currentSection: 'register',
-  currentUser: null,
-  ticketPrice: 75000,
-  merchandiseList: [],
-  selectedMerch: {}, // { merchId: { qty: 1, size: 'L', color: 'Hitam', price: 85000, name: '...' } }
-  activeRegistration: null, // Data pendaftaran yang baru disubmit
-  selectedReceiptFile: null,
-  allRegistrations: [],
-  html5QrScanner: null,
-  realtimeSubscription: null,
-  appConfig: {
-    bank_name: 'BCA (Bank Central Asia)',
-    bank_account_number: '0901234567',
-    bank_account_holder: 'PANITIA EVENT MKJ',
-    ticket_price: '75000',
-    admin_whatsapp: '6281234567890'
-  }
-};
+// ── State Global ──
+let currentProfile    = null;
+let allRegistrations  = [];
+let allMerchandise    = [];
+let selectedMerch     = {};   // { merchandise_id: { qty, size, color } }
+let currentRegId      = null; // ID registrasi terakhir dibuat
+let currentTicketCode = null;
+let currentGrandTotal = 75000;
+let currentConfig     = {};
+let selectedFile      = null;
+let chartPayment      = null;
+let chartDaily        = null;
+let scannerStream     = null;
+let qrScanner         = null;
+let activeVerifyId    = null;
+let realtimeChannel   = null;
 
-// ── 2. Helper UI: Loading Overlay & Toast ──
-function showLoading(text = 'Memproses data...') {
-  const el = document.getElementById('loading-overlay');
-  const txt = document.getElementById('loading-text');
-  if (txt) txt.textContent = text;
-  if (el) el.classList.remove('d-none');
+/* ============================================================
+   HELPER: LOADING OVERLAY
+   ============================================================ */
+function showLoading() {
+  document.getElementById('loading-overlay').classList.remove('d-none');
 }
-
 function hideLoading() {
-  const el = document.getElementById('loading-overlay');
-  if (el) el.classList.add('d-none');
+  document.getElementById('loading-overlay').classList.add('d-none');
 }
 
+/* ============================================================
+   HELPER: TOAST NOTIFIKASI
+   ============================================================ */
 function showToast(message, type = 'success') {
   const container = document.getElementById('toast-container');
-  if (!container) return;
   const toast = document.createElement('div');
   toast.className = `toast-item toast-${type}`;
-  toast.innerHTML = `<i class="fa-solid ${type === 'success' ? 'fa-circle-check' : type === 'error' ? 'fa-circle-xmark' : 'fa-triangle-exclamation'} me-2"></i>${message}`;
+  toast.innerHTML = `<i class="bi bi-${type === 'success' ? 'check-circle-fill' : type === 'error' ? 'exclamation-circle-fill' : 'info-circle-fill'} me-2"></i>${message}`;
   container.appendChild(toast);
   setTimeout(() => {
+    toast.style.transition = 'opacity 0.3s';
     toast.style.opacity = '0';
     setTimeout(() => toast.remove(), 300);
   }, 3500);
 }
 
-// ── 3. Helper Supabase Call ──
-async function callSupabase(promise, successMessage = null) {
+/* ============================================================
+   HELPER: WRAPPER SUPABASE CALL
+   ============================================================ */
+async function callSupabase(promise, successMessage) {
   showLoading();
   try {
-    if (!supabase) {
-      throw new Error('Supabase client belum dikonfigurasi. Silakan masukkan SUPABASE_URL & ANON_KEY di app.js.');
-    }
     const { data, error } = await promise;
     if (error) throw error;
     if (successMessage) showToast(successMessage, 'success');
     return { success: true, data };
   } catch (err) {
-    console.error('Supabase Error:', err);
-    showToast(err.message || 'Terjadi kesalahan komunikasi dengan server.', 'error');
-    return { success: false, data: null, error: err };
+    showToast(err.message || 'Terjadi kesalahan. Silakan coba lagi.', 'error');
+    return { success: false, data: null, message: err.message };
   } finally {
     hideLoading();
   }
 }
 
-// ── 4. Format Rupiah ──
-function formatRupiah(number) {
-  return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(number);
+/* ============================================================
+   HELPER: FORMAT MATA UANG
+   ============================================================ */
+function formatRupiah(angka) {
+  return 'Rp ' + Number(angka).toLocaleString('id-ID');
 }
 
-// ── 5. SPA Navigation Router ──
-function navigateTo(sectionId) {
-  // Hentikan scanner jika pindah dari scanner
-  if (appState.currentSection === 'admin-scanner' && sectionId !== 'admin-scanner') {
-    stopScanner();
-  }
+/* ============================================================
+   HELPER: FORMAT TANGGAL
+   ============================================================ */
+function formatTanggal(isoStr) {
+  if (!isoStr) return '—';
+  const d = new Date(isoStr);
+  return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
+}
 
+/* ============================================================
+   HELPER: GENERATE KODE TIKET
+   ============================================================ */
+function generateTicketCode() {
+  const tahun = new Date().getFullYear();
+  const random = String(Math.floor(1000 + Math.random() * 9000));
+  return `MKJ-${tahun}-${random}`;
+}
+
+/* ============================================================
+   DARK MODE TOGGLE
+   ============================================================ */
+function toggleDarkMode() {
+  const html = document.documentElement;
+  const isDark = html.getAttribute('data-theme') === 'dark';
+  html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  localStorage.setItem('mkj_theme', isDark ? 'light' : 'dark');
+}
+
+(function initTheme() {
+  const saved = localStorage.getItem('mkj_theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', saved);
+})();
+
+/* ============================================================
+   SPA NAVIGATION
+   ============================================================ */
+function navigateTo(sectionId) {
   document.querySelectorAll('.app-section').forEach(el => el.classList.add('d-none'));
   const target = document.getElementById(`section-${sectionId}`);
-  if (target) {
-    target.classList.remove('d-none');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
-  appState.currentSection = sectionId;
+  if (target) target.classList.remove('d-none');
 
-  // Lifecycle handler per section
-  if (sectionId === 'register') {
-    loadMerchandiseCatalog();
-    calculateOrderSummary();
-  } else if (sectionId === 'admin-dashboard') {
-    if (!appState.currentUser) {
-      navigateTo('admin-login');
-      return;
-    }
-    loadDashboardRegistrations();
-    initRealtimeChannel();
-  } else if (sectionId === 'admin-scanner') {
-    if (!appState.currentUser) {
-      navigateTo('admin-login');
-      return;
-    }
-    initQrScanner();
-  } else if (sectionId === 'admin-merch') {
-    loadAdminMerchandiseList();
-  } else if (sectionId === 'admin-config') {
-    loadAppConfigIntoForm();
+  // Cleanup scanner saat pindah halaman
+  if (sectionId !== 'dashboard') stopScanner();
+
+  // Load data sesuai section
+  if (sectionId === 'public')    loadPublicPage();
+  if (sectionId === 'dashboard') loadDashboard();
+}
+
+/* ============================================================
+   ADMIN TAB SWITCHER
+   ============================================================ */
+function switchAdminTab(tabId, btn) {
+  // Sembunyikan semua tab
+  document.querySelectorAll('.admin-tab').forEach(t => t.classList.add('d-none'));
+  // Hilangkan active semua nav item
+  document.querySelectorAll('.admin-nav-item').forEach(b => b.classList.remove('active'));
+  // Tampilkan tab target
+  const tab = document.getElementById(`admin-tab-${tabId}`);
+  if (tab) tab.classList.remove('d-none');
+  // Set active nav button
+  if (btn) btn.classList.add('active');
+
+  // Load data per tab
+  if (tabId === 'overview')       loadDashboard();
+  if (tabId === 'registrations')  loadAllRegistrations();
+  if (tabId === 'merchandise')    loadMerchAdmin();
+  if (tabId === 'scanner')        initScanner();
+  if (tabId === 'settings')       loadSettings();
+}
+
+/* ============================================================
+   AUTH FLOW
+   ============================================================ */
+async function signIn() {
+  const email    = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+
+  if (!email || !password) {
+    showToast('Email dan password harus diisi.', 'error'); return;
+  }
+
+  const result = await callSupabase(
+    supabase.auth.signInWithPassword({ email, password }),
+    'Login berhasil! Selamat datang.'
+  );
+
+  if (result.success) {
+    await loadCurrentProfile(result.data.user.id);
+    navigateTo('dashboard');
   }
 }
 
-// ── 6. Inisialisasi Aplikasi Saat Halaman Dimuat ──
-document.addEventListener('DOMContentLoaded', async () => {
-  initTheme();
-  await loadAppConfig();
-  await loadMerchandiseCatalog();
-  calculateOrderSummary();
+async function signOut() {
+  stopScanner();
+  if (realtimeChannel) { supabase.removeChannel(realtimeChannel); realtimeChannel = null; }
+  await supabase.auth.signOut();
+  currentProfile = null;
+  navigateTo('login');
+}
 
-  // Cek sesi login admin jika supabase aktif
-  if (supabase) {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
-      appState.currentUser = session.user;
-      updateAdminNavUI(true);
+async function loadCurrentProfile(userId) {
+  const result = await callSupabase(
+    supabase.from('profiles').select('*').eq('id', userId).single()
+  );
+  if (result.success) {
+    currentProfile = result.data;
+    const nameEl = document.getElementById('admin-user-name');
+    if (nameEl) nameEl.textContent = currentProfile.nama || currentProfile.role || 'Admin';
+  }
+}
+
+function togglePassword(inputId, btn) {
+  const input = document.getElementById(inputId);
+  const isPass = input.type === 'password';
+  input.type = isPass ? 'text' : 'password';
+  btn.innerHTML = `<i class="bi bi-eye${isPass ? '-slash' : ''}"></i>`;
+}
+
+// Pantau status auth Supabase
+supabase.auth.onAuthStateChange((event, session) => {
+  if (session) {
+    loadCurrentProfile(session.user.id);
+    if (document.getElementById('section-login')?.classList.contains('d-none') === false) {
+      navigateTo('dashboard');
     }
-
-    supabase.auth.onAuthStateChange((event, session) => {
-      appState.currentUser = session?.user || null;
-      updateAdminNavUI(!!session);
-    });
   }
 });
 
-function updateAdminNavUI(isLoggedIn) {
-  const btnAdmin = document.getElementById('nav-btn-admin');
-  const btnScanner = document.getElementById('nav-btn-scanner');
-  const adminLabel = document.getElementById('admin-btn-label');
-
-  if (isLoggedIn) {
-    if (adminLabel) adminLabel.textContent = 'Dashboard';
-    if (btnScanner) btnScanner.classList.remove('d-none');
-    if (btnAdmin) btnAdmin.onclick = () => navigateTo('admin-dashboard');
-  } else {
-    if (adminLabel) adminLabel.textContent = 'Admin';
-    if (btnScanner) btnScanner.classList.add('d-none');
-    if (btnAdmin) btnAdmin.onclick = () => navigateTo('admin-login');
-  }
-}
-
-// ── 7. Memuat & Mengelola Konfigurasi Aplikasi ──
-async function loadAppConfig() {
-  if (!supabase) return;
-  const { data, error } = await supabase.from('app_config').select('*');
-  if (data && !error) {
-    data.forEach(item => {
-      appState.appConfig[item.key] = item.value;
-    });
-    if (appState.appConfig.ticket_price) {
-      appState.ticketPrice = parseInt(appState.appConfig.ticket_price, 10) || 75000;
-      const dispEl = document.getElementById('disp-ticket-price');
-      if (dispEl) dispEl.textContent = formatRupiah(appState.ticketPrice);
-    }
-  }
-}
-
-function loadAppConfigIntoForm() {
-  document.getElementById('cfg-bank-name').value = appState.appConfig.bank_name || '';
-  document.getElementById('cfg-bank-acc-num').value = appState.appConfig.bank_account_number || '';
-  document.getElementById('cfg-bank-acc-holder').value = appState.appConfig.bank_account_holder || '';
-  document.getElementById('cfg-ticket-price').value = appState.appConfig.ticket_price || 75000;
-  document.getElementById('cfg-admin-wa').value = appState.appConfig.admin_whatsapp || '';
-}
-
-async function saveAppConfig(e) {
-  e.preventDefault();
-  const updates = [
-    { key: 'bank_name', value: document.getElementById('cfg-bank-name').value },
-    { key: 'bank_account_number', value: document.getElementById('cfg-bank-acc-num').value },
-    { key: 'bank_account_holder', value: document.getElementById('cfg-bank-acc-holder').value },
-    { key: 'ticket_price', value: document.getElementById('cfg-ticket-price').value },
-    { key: 'admin_whatsapp', value: document.getElementById('cfg-admin-wa').value }
-  ];
-
-  for (const item of updates) {
-    await callSupabase(supabase.from('app_config').upsert(item));
-  }
+/* ============================================================
+   LOAD HALAMAN PUBLIK
+   ============================================================ */
+async function loadPublicPage() {
   await loadAppConfig();
-  showToast('Pengaturan berhasil disimpan!', 'success');
-  navigateTo('admin-dashboard');
+  await loadMerchCatalog();
 }
 
-// ── 8. Katalog Merchandise & Kalkulasi Pesanan ──
-async function loadMerchandiseCatalog() {
-  const container = document.getElementById('merch-items-container');
-  if (!container) return;
+async function loadAppConfig() {
+  const result = await callSupabase(
+    supabase.from('app_config').select('*')
+  );
+  if (!result.success) return;
 
-  let items = [];
-  if (supabase) {
-    const res = await supabase.from('merchandise_items').select('*').eq('is_active', true);
-    if (res.data) items = res.data;
-  } else {
-    // Fallback Mock Data
-    items = [{
-      id: 'mock-1',
-      name: 'OFFICIAL T-SHIRT MKJ #1',
-      description: 'Bahan Cotton Combed 24s premium, sablon discharge berkualitas tinggi, nyaman & sejuk dipakai berkendara bareng ayah.',
-      price: 85000,
-      photo_url: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=500&auto=format&fit=crop&q=80',
-      available_sizes: ['S', 'M', 'L', 'XL', 'XXL'],
-      available_colors: ['Hitam', 'Orange']
-    }];
+  const config = {};
+  result.data.forEach(row => { config[row.key] = row.value; });
+  currentConfig = config;
+
+  // Terapkan ke UI public
+  if (config.eventDate) {
+    const d = new Date(config.eventDate);
+    const dateStr = d.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    const el = document.getElementById('hero-date');
+    if (el) el.textContent = dateStr;
+  }
+  const locEl = document.getElementById('hero-location');
+  if (locEl) locEl.textContent = config.eventLocation || '—';
+
+  const priceEl = document.getElementById('hero-price');
+  if (priceEl) priceEl.textContent = Number(config.ticketPrice || 75000).toLocaleString('id-ID');
+
+  const tagEl = document.getElementById('tagline-display');
+  if (tagEl && config.tagline) tagEl.textContent = `"${config.tagline}"`;
+
+  // Terapkan ke payment page
+  const bankNameEl = document.getElementById('bank-name-display');
+  if (bankNameEl) bankNameEl.textContent = config.bankName || '—';
+  const bankAccEl = document.getElementById('bank-account-display');
+  if (bankAccEl) bankAccEl.textContent = config.bankAccount || '—';
+  const bankHoldEl = document.getElementById('bank-holder-display');
+  if (bankHoldEl) bankHoldEl.textContent = config.bankHolder || '—';
+}
+
+/* ============================================================
+   KATALOG MERCHANDISE (PUBLIK)
+   ============================================================ */
+async function loadMerchCatalog() {
+  const result = await callSupabase(
+    supabase.from('merchandise_items').select('*').eq('is_active', true).order('created_at')
+  );
+  if (!result.success) return;
+
+  allMerchandise = result.data;
+  renderMerchCatalog(allMerchandise);
+}
+
+function renderMerchCatalog(items) {
+  const grid = document.getElementById('merch-catalog-grid');
+  if (!grid) return;
+
+  if (!items || items.length === 0) {
+    grid.innerHTML = '<p class="text-muted text-center py-4">Belum ada merchandise tersedia.</p>';
+    return;
   }
 
-  appState.merchandiseList = items;
-  container.innerHTML = '';
+  grid.innerHTML = items.map(item => `
+    <div class="merch-card" id="merch-card-${item.id}">
+      ${item.photo_url
+        ? `<img src="${item.photo_url}" alt="${item.name}" class="merch-photo" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><div class="merch-photo-placeholder" style="display:none"><i class="bi bi-bag-heart"></i><span>${item.name}</span></div>`
+        : `<div class="merch-photo-placeholder"><i class="bi bi-bag-heart"></i><span>${item.name}</span></div>`
+      }
+      <div class="merch-name">${item.name}</div>
+      <div class="merch-desc">${item.description || ''}</div>
+      <div class="merch-price">${formatRupiah(item.price)}</div>
 
-  items.forEach(item => {
-    const isSelected = !!appState.selectedMerch[item.id];
-    const currentQty = isSelected ? appState.selectedMerch[item.id].qty : 1;
-    const currentSize = isSelected ? appState.selectedMerch[item.id].size : item.available_sizes[0];
-    const currentColor = isSelected ? appState.selectedMerch[item.id].color : item.available_colors[0];
-
-    const card = document.createElement('div');
-    card.className = `merch-card ${isSelected ? 'selected' : ''}`;
-    card.id = `merch-card-${item.id}`;
-    card.innerHTML = `
-      <div class="merch-img-container">
-        <img src="${item.photo_url || 'https://via.placeholder.com/400x300?text=Kaos+MKJ'}" alt="${item.name}" class="merch-img" />
-        <div class="merch-price-tag">${formatRupiah(item.price)}</div>
+      <div class="merch-select-row">
+        <div>
+          <span class="merch-select-label">Ukuran</span>
+          <select class="form-input-custom" id="size-${item.id}" style="font-size:12px;padding:6px 8px">
+            ${item.available_sizes.map(s => `<option value="${s}">${s}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <span class="merch-select-label">Warna</span>
+          <select class="form-input-custom" id="color-${item.id}" style="font-size:12px;padding:6px 8px">
+            ${item.available_colors.map(c => `<option value="${c}">${c}</option>`).join('')}
+          </select>
+        </div>
       </div>
-      <div class="merch-body">
-        <h3 class="fs-5 text-white fw-bold mb-1">${item.name}</h3>
-        <p class="text-muted small mb-3">${item.description || ''}</p>
 
-        <!-- Pilihan Ukuran -->
-        <label class="form-label">Pilih Ukuran:</label>
-        <div class="size-pill-group" id="size-group-${item.id}">
-          ${item.available_sizes.map(sz => `
-            <div class="size-pill ${sz === currentSize ? 'active' : ''}" onclick="selectMerchSize('${item.id}', '${sz}')">${sz}</div>
-          `).join('')}
+      <div class="merch-toggle-row">
+        <div class="qty-stepper" id="qty-stepper-${item.id}">
+          <button class="qty-btn" onclick="changeQty('${item.id}', -1)">−</button>
+          <span class="qty-value" id="qty-val-${item.id}">0</span>
+          <button class="qty-btn" onclick="changeQty('${item.id}', +1)">+</button>
         </div>
-
-        <!-- Pilihan Warna -->
-        <label class="form-label">Pilih Warna:</label>
-        <div class="color-radio-group" id="color-group-${item.id}">
-          ${item.available_colors.map(col => `
-            <div class="color-option ${col === currentColor ? 'active' : ''}" onclick="selectMerchColor('${item.id}', '${col}')">
-              <i class="fa-solid fa-circle" style="color: ${col.toLowerCase() === 'orange' ? '#ff5500' : '#333'}"></i> ${col}
-            </div>
-          `).join('')}
-        </div>
-
-        <!-- Stepper & Tambah Tombol -->
-        <div class="d-flex align-items-center justify-content-between pt-2 border-top border-dark mt-2">
-          <div class="d-flex align-items-center gap-2">
-            <button type="button" class="stepper-btn" onclick="adjustMerchQty('${item.id}', -1)">-</button>
-            <span class="fw-bold px-2 text-white" id="qty-label-${item.id}">${currentQty}</span>
-            <button type="button" class="stepper-btn" onclick="adjustMerchQty('${item.id}', 1)">+</button>
-          </div>
-          <button type="button" class="btn btn-sm ${isSelected ? 'btn-danger' : 'btn-warning text-dark fw-bold'}" onclick="toggleSelectMerch('${item.id}')">
-            <i class="fa-solid ${isSelected ? 'fa-trash' : 'fa-cart-plus'} me-1"></i> ${isSelected ? 'Batal Tambah' : 'Tambah Kaos'}
-          </button>
-        </div>
+        <label class="toggle-label">
+          <input type="checkbox" class="toggle-checkbox" id="chk-${item.id}"
+            onchange="toggleMerch('${item.id}', ${item.price}, this.checked)" />
+          Pesan
+        </label>
       </div>
-    `;
-    container.appendChild(card);
-  });
+    </div>
+  `).join('');
 }
 
-function selectMerchSize(merchId, size) {
-  const item = appState.merchandiseList.find(m => m.id === merchId);
-  if (!item) return;
+function changeQty(itemId, delta) {
+  const current = parseInt(document.getElementById(`qty-val-${itemId}`).textContent) || 0;
+  const newQty = Math.max(0, current + delta);
+  document.getElementById(`qty-val-${itemId}`).textContent = newQty;
 
-  if (!appState.selectedMerch[merchId]) {
-    appState.selectedMerch[merchId] = {
-      qty: 1,
-      size: size,
-      color: item.available_colors[0],
-      price: item.price,
-      name: item.name
-    };
-  } else {
-    appState.selectedMerch[merchId].size = size;
-  }
-  document.querySelectorAll(`#size-group-${merchId} .size-pill`).forEach(el => {
-    el.classList.toggle('active', el.textContent.trim() === size);
-  });
-  highlightMerchCard(merchId, true);
-  calculateOrderSummary();
-}
-
-function selectMerchColor(merchId, color) {
-  const item = appState.merchandiseList.find(m => m.id === merchId);
-  if (!item) return;
-
-  if (!appState.selectedMerch[merchId]) {
-    appState.selectedMerch[merchId] = {
-      qty: 1,
-      size: item.available_sizes[0],
-      color: color,
-      price: item.price,
-      name: item.name
-    };
-  } else {
-    appState.selectedMerch[merchId].color = color;
-  }
-  document.querySelectorAll(`#color-group-${merchId} .color-option`).forEach(el => {
-    el.classList.toggle('active', el.textContent.includes(color));
-  });
-  highlightMerchCard(merchId, true);
-  calculateOrderSummary();
-}
-
-function adjustMerchQty(merchId, delta) {
-  const item = appState.merchandiseList.find(m => m.id === merchId);
-  if (!item) return;
-
-  if (!appState.selectedMerch[merchId]) {
-    if (delta > 0) {
-      appState.selectedMerch[merchId] = {
-        qty: 1,
-        size: item.available_sizes[0],
-        color: item.available_colors[0],
-        price: item.price,
-        name: item.name
-      };
-      highlightMerchCard(merchId, true);
-    }
-  } else {
-    let newQty = appState.selectedMerch[merchId].qty + delta;
-    if (newQty <= 0) {
-      delete appState.selectedMerch[merchId];
-      highlightMerchCard(merchId, false);
+  const isSelected = selectedMerch[itemId] !== undefined;
+  if (isSelected) {
+    if (newQty === 0) {
+      document.getElementById(`chk-${itemId}`).checked = false;
+      toggleMerch(itemId, null, false);
     } else {
-      appState.selectedMerch[merchId].qty = newQty;
+      selectedMerch[itemId].qty = newQty;
+      updateOrderSummary();
     }
   }
-
-  const label = document.getElementById(`qty-label-${merchId}`);
-  if (label) label.textContent = appState.selectedMerch[merchId] ? appState.selectedMerch[merchId].qty : 1;
-  calculateOrderSummary();
 }
 
-function toggleSelectMerch(merchId) {
-  const item = appState.merchandiseList.find(m => m.id === merchId);
+function toggleMerch(itemId, price, isChecked) {
+  const card = document.getElementById(`merch-card-${itemId}`);
+  const item = allMerchandise.find(m => m.id === itemId);
   if (!item) return;
 
-  if (appState.selectedMerch[merchId]) {
-    delete appState.selectedMerch[merchId];
-    highlightMerchCard(merchId, false);
+  if (isChecked) {
+    const qty = Math.max(1, parseInt(document.getElementById(`qty-val-${itemId}`).textContent) || 1);
+    const size  = document.getElementById(`size-${itemId}`)?.value;
+    const color = document.getElementById(`color-${itemId}`)?.value;
+    document.getElementById(`qty-val-${itemId}`).textContent = qty;
+    selectedMerch[itemId] = { qty, size, color, price: item.price, name: item.name };
+    card?.classList.add('selected');
   } else {
-    appState.selectedMerch[merchId] = {
-      qty: 1,
-      size: item.available_sizes[0],
-      color: item.available_colors[0],
-      price: item.price,
-      name: item.name
-    };
-    highlightMerchCard(merchId, true);
+    delete selectedMerch[itemId];
+    document.getElementById(`qty-val-${itemId}`).textContent = '0';
+    card?.classList.remove('selected');
   }
-  loadMerchandiseCatalog();
-  calculateOrderSummary();
+  updateOrderSummary();
 }
 
-function highlightMerchCard(merchId, isSelected) {
-  const card = document.getElementById(`merch-card-${merchId}`);
-  if (card) card.classList.toggle('selected', isSelected);
-}
-
-function calculateOrderSummary() {
+function updateOrderSummary() {
+  const ticketPrice = parseInt(currentConfig.ticketPrice || 75000);
   let merchTotal = 0;
-  let merchCount = 0;
+  const lines = [];
 
-  Object.values(appState.selectedMerch).forEach(item => {
-    merchTotal += (item.qty * item.price);
-    merchCount += item.qty;
+  Object.entries(selectedMerch).forEach(([id, data]) => {
+    const subtotal = data.qty * data.price;
+    merchTotal += subtotal;
+    lines.push(`<div class="order-line"><span>${data.qty}× ${data.name} (${data.size}, ${data.color})</span><span>${formatRupiah(subtotal)}</span></div>`);
   });
 
-  const grandTotal = appState.ticketPrice + merchTotal;
+  currentGrandTotal = ticketPrice + merchTotal;
 
-  const breakdownEl = document.getElementById('summary-breakdown-text');
-  const totalEl = document.getElementById('summary-total-amount');
-
-  if (breakdownEl) {
-    breakdownEl.textContent = `Tiket: ${formatRupiah(appState.ticketPrice)} ${merchCount > 0 ? `+ Merch (${merchCount} pcs)` : ''}`;
-  }
-  if (totalEl) {
-    totalEl.textContent = formatRupiah(grandTotal);
-  }
-
-  return { ticketPrice: appState.ticketPrice, merchTotal, grandTotal };
+  document.getElementById('merch-summary-lines').innerHTML = lines.join('');
+  document.getElementById('grand-total-display').textContent = formatRupiah(currentGrandTotal);
 }
 
-// ── 9. Submit Pendaftaran Peserta (Publik) ──
-function submitRegistration() {
-  const form = document.getElementById('form-registration');
-  if (!form.checkValidity()) {
-    form.reportValidity();
-    return;
+/* ============================================================
+   SUBMIT REGISTRASI
+   ============================================================ */
+async function submitRegistration() {
+  // Validasi input
+  const fatherName = document.getElementById('father-name').value.trim();
+  const childName  = document.getElementById('child-name').value.trim();
+  const childAge   = document.getElementById('child-age').value;
+  const waNumber   = document.getElementById('whatsapp-number').value.trim();
+  const address    = document.getElementById('address').value.trim();
+
+  if (!fatherName || !childName || !childAge || !waNumber || !address) {
+    showToast('Harap isi semua data yang wajib diisi (*).', 'error'); return;
   }
 
-  const fatherName = document.getElementById('reg-father-name').value.trim();
-  const childName = document.getElementById('reg-child-name').value.trim();
-  const childAge = parseInt(document.getElementById('reg-child-age').value, 10);
-  const rawWa = document.getElementById('reg-whatsapp').value.trim();
-  const address = document.getElementById('reg-address').value.trim();
+  const ticketCode  = generateTicketCode();
+  const ticketPrice = parseInt(currentConfig.ticketPrice || 75000);
+  let   merchTotal  = 0;
+  Object.values(selectedMerch).forEach(d => { merchTotal += d.qty * d.price; });
+  const grandTotal = ticketPrice + merchTotal;
 
-  // Format Nomor WhatsApp
-  let formattedWa = rawWa.replace(/\D/g, '');
-  if (formattedWa.startsWith('0')) formattedWa = '62' + formattedWa.substring(1);
-  else if (!formattedWa.startsWith('62')) formattedWa = '62' + formattedWa;
+  // Insert ke tabel registrations
+  const regResult = await callSupabase(
+    supabase.from('registrations').insert({
+      ticket_code:    ticketCode,
+      father_name:    fatherName,
+      child_name:     childName,
+      child_age:      parseInt(childAge),
+      whatsapp_number: waNumber,
+      address:        address,
+      ticket_price:   ticketPrice,
+      merch_total:    merchTotal,
+      grand_total:    grandTotal,
+      payment_status: 'pending'
+    }).select().single(),
+    null
+  );
 
-  const totals = calculateOrderSummary();
-  const ticketCode = 'MKJ-' + Math.floor(100000 + Math.random() * 900000);
+  if (!regResult.success) return;
+  const reg = regResult.data;
+  currentRegId      = reg.id;
+  currentTicketCode = reg.ticket_code;
 
-  const registrationData = {
-    ticket_code: ticketCode,
-    father_name: fatherName,
-    child_name: childName,
-    child_age: childAge,
-    whatsapp_number: formattedWa,
-    address: address,
-    ticket_price: totals.ticketPrice,
-    merch_total: totals.merchTotal,
-    grand_total: totals.grandTotal,
-    payment_status: 'pending',
-    checkin_status: false
-  };
+  // Insert item merchandise jika ada
+  const merchItems = Object.entries(selectedMerch).map(([id, data]) => ({
+    registration_id: reg.id,
+    merchandise_id:  id,
+    item_name:       data.name,
+    size:            data.size,
+    color:           data.color,
+    quantity:        data.qty,
+    price_per_item:  data.price,
+    subtotal:        data.qty * data.price
+  }));
 
-  executeRegistrationSave(registrationData);
+  if (merchItems.length > 0) {
+    await callSupabase(
+      supabase.from('registration_merchandise').insert(merchItems),
+      null
+    );
+  }
+
+  // Pindah ke halaman pembayaran
+  populatePaymentPage(reg, grandTotal, fatherName, childName);
+  navigateTo('payment');
+  showToast('Pendaftaran berhasil! Silakan selesaikan pembayaran.', 'success');
 }
 
-async function executeRegistrationSave(regData) {
-  if (!supabase) {
-    // Mode demo tanpa backend
-    appState.activeRegistration = { id: 'mock-reg-id', ...regData };
-    setupPaymentPage(appState.activeRegistration);
-    navigateTo('payment');
-    showToast('Pendaftaran berhasil dicatat (Mode Demo)', 'success');
-    return;
-  }
+function populatePaymentPage(reg, grandTotal, fatherName, childName) {
+  const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
 
-  showLoading('Menyimpan pendaftaran...');
-  try {
-    const { data: insertedReg, error: regErr } = await supabase
-      .from('registrations')
-      .insert(regData)
-      .select()
-      .single();
+  setEl('pay-ticket-code', reg.ticket_code);
+  setEl('pay-father-name', reg.father_name || fatherName);
+  setEl('pay-child-name',  reg.child_name  || childName);
+  setEl('pay-grand-total', formatRupiah(grandTotal));
+  setEl('pay-amount-display', formatRupiah(grandTotal));
 
-    if (regErr) throw regErr;
+  // Refresh bank info dari config
+  const bankNameEl = document.getElementById('bank-name-display');
+  if (bankNameEl) bankNameEl.textContent = currentConfig.bankName || '—';
+  const bankAccEl  = document.getElementById('bank-account-display');
+  if (bankAccEl)  bankAccEl.textContent = currentConfig.bankAccount || '—';
+  const bankHoldEl = document.getElementById('bank-holder-display');
+  if (bankHoldEl) bankHoldEl.textContent = currentConfig.bankHolder || '—';
 
-    // Simpan item merchandise jika ada yang dipesan
-    const merchEntries = Object.entries(appState.selectedMerch);
-    if (merchEntries.length > 0) {
-      const itemsToInsert = merchEntries.map(([merchId, item]) => ({
-        registration_id: insertedReg.id,
-        merchandise_id: merchId.startsWith('mock') ? null : merchId,
-        item_name: item.name,
-        size: item.size,
-        color: item.color,
-        quantity: item.qty,
-        price_per_item: item.price,
-        subtotal: item.qty * item.price
-      }));
-
-      await supabase.from('registration_merchandise').insert(itemsToInsert);
-    }
-
-    appState.activeRegistration = insertedReg;
-    setupPaymentPage(insertedReg);
-    navigateTo('payment');
-    showToast('Pendaftaran berhasil dicatat!', 'success');
-  } catch (err) {
-    console.error('Error saving registration:', err);
-    showToast(err.message || 'Gagal menyimpan pendaftaran.', 'error');
-  } finally {
-    hideLoading();
+  // Merchandise lines di payment page
+  const linesEl = document.getElementById('pay-merch-lines');
+  if (linesEl) {
+    linesEl.innerHTML = Object.entries(selectedMerch).map(([id, data]) =>
+      `<div class="info-row"><span>${data.qty}× ${data.name}</span><strong>${formatRupiah(data.qty * data.price)}</strong></div>`
+    ).join('');
   }
 }
 
-function setupPaymentPage(reg) {
-  document.getElementById('pay-bank-name').textContent = appState.appConfig.bank_name || 'BANK BCA';
-  document.getElementById('pay-ticket-code').textContent = reg.ticket_code;
-  document.getElementById('pay-account-num').textContent = appState.appConfig.bank_account_number || '0901234567';
-  document.getElementById('pay-account-holder').textContent = appState.appConfig.bank_account_holder || 'PANITIA EVENT MKJ';
-  document.getElementById('pay-grand-total').textContent = formatRupiah(reg.grand_total);
-}
-
-// ── 10. Upload Bukti Pembayaran ke Supabase Storage ──
-function handleFileSelected(event) {
-  const file = event.target.files[0];
+/* ============================================================
+   UPLOAD BUKTI BAYAR
+   ============================================================ */
+function handleFileSelect(input) {
+  const file = input.files[0];
   if (!file) return;
 
   if (file.size > 5 * 1024 * 1024) {
-    showToast('Ukuran file maksimal 5MB!', 'error');
-    event.target.value = '';
-    return;
+    showToast('Ukuran file melebihi 5MB. Pilih file yang lebih kecil.', 'error');
+    input.value = ''; return;
   }
 
-  appState.selectedReceiptFile = file;
-
-  // Render preview
-  const previewContainer = document.getElementById('file-preview-container');
-  const previewImg = document.getElementById('file-preview-img');
-  const nameLabel = document.getElementById('file-name-label');
-
-  nameLabel.textContent = file.name;
-
-  if (file.type.startsWith('image/')) {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      previewImg.src = e.target.result;
-      previewContainer.classList.remove('d-none');
-    };
-    reader.readAsDataURL(file);
-  } else {
-    previewImg.src = 'https://via.placeholder.com/300x150?text=Dokumen+PDF';
-    previewContainer.classList.remove('d-none');
-  }
+  selectedFile = file;
+  document.getElementById('file-preview-name').textContent = file.name;
+  document.getElementById('file-preview-wrap').classList.remove('d-none');
+  document.getElementById('btn-upload-receipt').disabled = false;
 }
 
-function removeSelectedFile() {
-  appState.selectedReceiptFile = null;
-  document.getElementById('file-payment-receipt').value = '';
-  document.getElementById('file-preview-container').classList.add('d-none');
+function removeFile() {
+  selectedFile = null;
+  document.getElementById('receipt-file').value = '';
+  document.getElementById('file-preview-wrap').classList.add('d-none');
+  document.getElementById('btn-upload-receipt').disabled = true;
 }
 
-async function uploadReceiptAndFinish() {
-  if (!appState.selectedReceiptFile) {
-    showToast('Silakan pilih file bukti transfer terlebih dahulu!', 'warning');
-    return;
+async function uploadReceipt() {
+  if (!selectedFile || !currentRegId) {
+    showToast('Pilih file bukti pembayaran terlebih dahulu.', 'error'); return;
   }
 
-  if (!appState.activeRegistration) {
-    showToast('Data pendaftaran tidak ditemukan.', 'error');
-    navigateTo('register');
-    return;
-  }
+  const ext  = selectedFile.name.split('.').pop();
+  const path = `receipts/${currentRegId}_${Date.now()}.${ext}`;
 
-  showLoading('Mengunggah bukti pembayaran...');
+  showLoading();
   try {
-    let receiptUrl = 'https://via.placeholder.com/400x600?text=Bukti+Transfer';
+    const { data: uploadData, error: uploadErr } = await supabase.storage
+      .from('payment-receipts').upload(path, selectedFile);
+    if (uploadErr) throw uploadErr;
 
-    if (supabase) {
-      const file = appState.selectedReceiptFile;
-      const fileExt = file.name.split('.').pop();
-      const filePath = `receipts/${appState.activeRegistration.ticket_code}_${Date.now()}.${fileExt}`;
+    const { data: urlData } = supabase.storage.from('payment-receipts').getPublicUrl(path);
+    const publicUrl = urlData.publicUrl;
 
-      const { data: uploadData, error: uploadErr } = await supabase.storage
-        .from('payment-receipts')
-        .upload(filePath, file, { cacheControl: '3600', upsert: true });
+    // Update registrasi dengan URL bukti bayar
+    const { error: updateErr } = await supabase.from('registrations')
+      .update({ payment_receipt_url: publicUrl })
+      .eq('id', currentRegId);
+    if (updateErr) throw updateErr;
 
-      if (uploadErr) throw uploadErr;
+    showToast('Bukti pembayaran berhasil dikirim! Tim kami akan segera memverifikasi.', 'success');
 
-      const { data: publicUrlData } = supabase.storage
-        .from('payment-receipts')
-        .getPublicUrl(filePath);
-
-      receiptUrl = publicUrlData.publicUrl;
-
-      // Update URL struk di tabel registrations
-      const { error: updateErr } = await supabase
-        .from('registrations')
-        .update({ payment_receipt_url: receiptUrl })
-        .eq('id', appState.activeRegistration.id);
-
-      if (updateErr) throw updateErr;
-    }
-
-    showToast('Bukti transfer berhasil dikirim! Panitia akan segera memverifikasi.', 'success');
-    navigateTo('status');
-    displayTicketStatusResult({
-      ...appState.activeRegistration,
-      payment_receipt_url: receiptUrl
-    });
+    // Arahkan ke halaman status
+    setTimeout(() => {
+      navigateTo('status');
+      checkTicketStatus(currentTicketCode);
+    }, 1500);
   } catch (err) {
-    console.error('Error uploading receipt:', err);
-    showToast(err.message || 'Gagal mengunggah bukti transfer.', 'error');
+    showToast(err.message || 'Gagal upload. Coba lagi.', 'error');
   } finally {
     hideLoading();
   }
 }
 
-// ── 11. Cek Status Pendaftaran & Tiket (Publik) ──
-async function searchTicketStatus() {
-  const query = document.getElementById('input-search-ticket').value.trim();
-  if (!query) {
-    showToast('Masukkan nomor WhatsApp atau kode tiket!', 'warning');
-    return;
-  }
-
-  let formattedQuery = query;
-  if (query.startsWith('0')) formattedQuery = '62' + query.substring(1);
-
-  showLoading('Mencari data tiket...');
-  try {
-    let result = null;
-    if (supabase) {
-      const { data, error } = await supabase
-        .from('registrations')
-        .select('*, registration_merchandise(*)')
-        .or(`ticket_code.eq.${query.toUpperCase()},whatsapp_number.eq.${formattedQuery}`)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (error) throw error;
-      result = data;
-    } else {
-      result = appState.activeRegistration;
-    }
-
-    if (!result) {
-      showToast('Data tiket tidak ditemukan. Pastikan nomor WhatsApp atau kode tiket benar.', 'error');
-      document.getElementById('ticket-result-container').classList.add('d-none');
-    } else {
-      displayTicketStatusResult(result);
-    }
-  } catch (err) {
-    console.error('Search ticket error:', err);
-    showToast(err.message || 'Gagal mencari tiket.', 'error');
-  } finally {
-    hideLoading();
-  }
-}
-
-function displayTicketStatusResult(reg) {
-  const container = document.getElementById('ticket-result-container');
-  if (!container) return;
-
-  const isVerified = reg.payment_status === 'verified';
-  const isRejected = reg.payment_status === 'rejected';
-
-  container.innerHTML = `
-    <div class="bank-card border-${isVerified ? 'success' : isRejected ? 'danger' : 'warning'}">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <span class="badge-status ${isVerified ? 'badge-verified' : isRejected ? 'badge-rejected' : 'badge-pending'}">
-          <i class="fa-solid ${isVerified ? 'fa-circle-check' : isRejected ? 'fa-circle-xmark' : 'fa-clock'}"></i>
-          ${isVerified ? 'LUNAS / VERIFIED' : isRejected ? 'DITOLAK' : 'MENUNGGU VERIFIKASI'}
-        </span>
-        <span class="font-display fs-5 text-warning">${reg.ticket_code}</span>
-      </div>
-
-      <div class="mb-2">
-        <div class="text-muted small">Peserta Touring:</div>
-        <div class="fw-bold text-white fs-5">${reg.father_name} & ${reg.child_name} (${reg.child_age} Thn)</div>
-      </div>
-
-      <div class="row g-2 my-2 py-2 border-top border-bottom border-dark">
-        <div class="col-6">
-          <span class="text-muted small">No WhatsApp:</span>
-          <div class="text-white">${reg.whatsapp_number}</div>
-        </div>
-        <div class="col-6">
-          <span class="text-muted small">Total Tagihan:</span>
-          <div class="text-warning fw-bold font-display fs-5">${formatRupiah(reg.grand_total)}</div>
-        </div>
-      </div>
-
-      <div class="mb-3">
-        <span class="text-muted small">Status Check-in di Venue:</span>
-        <div class="mt-1">
-          <span class="badge bg-${reg.checkin_status ? 'success' : 'secondary'}">
-            <i class="fa-solid ${reg.checkin_status ? 'fa-circle-check' : 'fa-hourglass-start'} me-1"></i>
-            ${reg.checkin_status ? 'SUDAH CHECK-IN' : 'BELUM CHECK-IN'}
-          </span>
-        </div>
-      </div>
-
-      ${isVerified ? `
-        <div class="alert alert-success bg-dark border-success text-white small mb-0">
-          <i class="fa-solid fa-circle-check text-success me-2"></i>
-          Pembayaran Anda telah diverifikasi! Panitia akan mengirimkan tiket PDF resmi dan barcode via WhatsApp.
-        </div>
-      ` : `
-        <div class="alert alert-warning bg-dark border-warning text-white small mb-0">
-          <i class="fa-solid fa-info-circle text-warning me-2"></i>
-          ${reg.payment_receipt_url ? 'Bukti bayar sedang dalam antrean verifikasi tim panitia.' : 'Silakan upload bukti transfer agar slot tiket segera diamankan.'}
-        </div>
-      `}
-    </div>
-  `;
-  container.classList.remove('d-none');
-}
-
-// ── 12. Admin Authentication & Dashboard ──
-async function handleAdminLogin(e) {
-  e.preventDefault();
-  const email = document.getElementById('admin-email').value.trim();
-  const password = document.getElementById('admin-password').value.trim();
-
-  if (!supabase) {
-    appState.currentUser = { email: email, role: 'admin' };
-    updateAdminNavUI(true);
-    navigateTo('admin-dashboard');
-    showToast('Masuk sebagai Admin (Demo Mode)', 'success');
-    return;
-  }
-
-  showLoading('Memvalidasi login admin...');
-  try {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-    appState.currentUser = data.user;
-    updateAdminNavUI(true);
-    navigateTo('admin-dashboard');
-    showToast('Selamat datang di Dashboard Admin!', 'success');
-  } catch (err) {
-    console.error('Login error:', err);
-    showToast(err.message || 'Email atau password admin salah.', 'error');
-  } finally {
-    hideLoading();
-  }
-}
-
-async function handleAdminLogout() {
-  if (supabase) await supabase.auth.signOut();
-  appState.currentUser = null;
-  updateAdminNavUI(false);
-  navigateTo('register');
-  showToast('Berhasil keluar.', 'success');
-}
-
-// ── 13. Dashboard Realtime Registrations & KPI ──
-async function loadDashboardRegistrations() {
-  showLoading('Memuat data pendaftaran...');
-  try {
-    let data = [];
-    if (supabase) {
-      const res = await supabase
-        .from('registrations')
-        .select('*, registration_merchandise(*)')
-        .order('created_at', { ascending: false });
-      if (res.error) throw res.error;
-      data = res.data || [];
-    } else {
-      data = [
-        {
-          id: '1',
-          ticket_code: 'MKJ-2026-001',
-          father_name: 'Budi Santoso',
-          child_name: 'Arka Santoso',
-          child_age: 7,
-          whatsapp_number: '6281234567891',
-          grand_total: 160000,
-          payment_receipt_url: 'https://images.unsplash.com/photo-1554415707-9e49017a1430?w=400',
-          payment_status: 'verified',
-          checkin_status: true,
-          registration_merchandise: [{ item_name: 'OFFICIAL T-SHIRT MKJ #1', size: 'L', color: 'Hitam', quantity: 1 }]
-        },
-        {
-          id: '2',
-          ticket_code: 'MKJ-2026-002',
-          father_name: 'Ahmad Fauzi',
-          child_name: 'Raihan Fauzi',
-          child_age: 5,
-          whatsapp_number: '6281298765432',
-          grand_total: 75000,
-          payment_receipt_url: 'https://images.unsplash.com/photo-1554415707-9e49017a1430?w=400',
-          payment_status: 'pending',
-          checkin_status: false,
-          registration_merchandise: []
-        }
-      ];
-    }
-
-    appState.allRegistrations = data;
-    updateKpiMetrics(data);
-    renderRegistrationsTable(data);
-    document.getElementById('last-sync-time').textContent = 'Update: ' + new Date().toLocaleTimeString('id-ID');
-  } catch (err) {
-    console.error('Error loading registrations:', err);
-    showToast(err.message || 'Gagal memuat data pendaftaran.', 'error');
-  } finally {
-    hideLoading();
-  }
-}
-
-function updateKpiMetrics(registrations) {
-  const total = registrations.length;
-  let verifiedMoney = 0;
-  let pendingCount = 0;
-  let checkinCount = 0;
-
-  registrations.forEach(r => {
-    if (r.payment_status === 'verified') {
-      verifiedMoney += Number(r.grand_total || 0);
-    }
-    if (r.payment_status === 'pending') {
-      pendingCount++;
-    }
-    if (r.checkin_status) {
-      checkinCount++;
+/* Drag-and-drop handler */
+const dropZone = document.getElementById('upload-drop-zone');
+if (dropZone) {
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.style.borderColor = 'var(--accent-orange-h)'; });
+  dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor = 'var(--accent-orange)'; });
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.style.borderColor = 'var(--accent-orange)';
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      const inp = document.getElementById('receipt-file');
+      const dt = new DataTransfer(); dt.items.add(file);
+      inp.files = dt.files;
+      handleFileSelect(inp);
     }
   });
-
-  const percent = total > 0 ? Math.round((checkinCount / total) * 100) : 0;
-
-  document.getElementById('kpi-total-reg').textContent = total;
-  document.getElementById('kpi-total-money').textContent = formatRupiah(verifiedMoney);
-  document.getElementById('kpi-pending-count').textContent = pendingCount;
-  document.getElementById('kpi-checkin-count').textContent = `${checkinCount} / ${total}`;
-  document.getElementById('kpi-checkin-percent').textContent = `${percent}% Kehadiran`;
 }
 
-function renderRegistrationsTable(registrations) {
-  const tbody = document.getElementById('registrations-tbody');
-  if (!tbody) return;
+/* ============================================================
+   COPY TO CLIPBOARD
+   ============================================================ */
+function copyToClipboard(elementId) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  navigator.clipboard.writeText(el.textContent.trim())
+    .then(() => showToast('Nomor rekening disalin!', 'info'))
+    .catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = el.textContent; document.body.appendChild(ta);
+      ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+      showToast('Nomor rekening disalin!', 'info');
+    });
+}
 
-  if (registrations.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" class="text-center py-4 text-muted">Belum ada data pendaftaran.</td></tr>`;
-    return;
+function copyAmountToClipboard() {
+  const rawAmt = String(currentGrandTotal);
+  navigator.clipboard.writeText(rawAmt)
+    .then(() => showToast('Nominal transfer disalin!', 'info'))
+    .catch(() => showToast('Gagal salin. Salin manual.', 'error'));
+}
+
+/* ============================================================
+   CEK STATUS TIKET (PUBLIK)
+   ============================================================ */
+async function checkTicketStatus(codeOverride) {
+  const code = codeOverride || document.getElementById('check-ticket-code')?.value.trim().toUpperCase();
+  if (!code) { showToast('Masukkan kode tiket terlebih dahulu.', 'error'); return; }
+
+  const result = await callSupabase(
+    supabase.from('registrations').select('*').eq('ticket_code', code).single()
+  );
+
+  if (!result.success || !result.data) {
+    showToast('Kode tiket tidak ditemukan.', 'error'); return;
   }
 
-  tbody.innerHTML = registrations.map(reg => {
-    const isVerified = reg.payment_status === 'verified';
-    const isRejected = reg.payment_status === 'rejected';
-    const hasMerch = reg.registration_merchandise && reg.registration_merchandise.length > 0;
-    const merchDesc = hasMerch
-      ? reg.registration_merchandise.map(m => `${m.quantity}x ${m.item_name} (${m.size}/${m.color})`).join(', ')
-      : 'Tiket Saja';
+  const reg = result.data;
+  renderStatusPage(reg);
+  navigateTo('status');
+}
 
-    return `
+function renderStatusPage(reg) {
+  const statusMap = {
+    pending:  { icon: 'bi-hourglass-split', cls: 'pending', title: 'PENDAFTARAN DALAM PROSES', sub: 'Tim kami sedang memverifikasi bukti pembayaran Anda.' },
+    verified: { icon: 'bi-check-circle-fill', cls: 'verified', title: 'PEMBAYARAN TERVERIFIKASI!', sub: 'Tiket Anda aktif. Sampai jumpa di lokasi event!' },
+    rejected: { icon: 'bi-x-circle-fill', cls: 'rejected', title: 'PEMBAYARAN DITOLAK', sub: 'Bukti pembayaran tidak valid. Silakan upload ulang atau hubungi admin.' }
+  };
+
+  const s = statusMap[reg.payment_status] || statusMap.pending;
+
+  const iconEl = document.getElementById('status-main-icon');
+  if (iconEl) { iconEl.className = `bi ${s.icon} status-icon ${s.cls}`; iconEl.style.fontSize = '3.5rem'; }
+
+  const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  setEl('status-title-text',    s.title);
+  setEl('status-subtitle-text', s.sub);
+  setEl('st-ticket-code',       reg.ticket_code);
+  setEl('st-father-name',       reg.father_name);
+  setEl('st-child-name',        reg.child_name);
+  setEl('st-grand-total',       formatRupiah(reg.grand_total));
+
+  const statusEl = document.getElementById('st-payment-status');
+  if (statusEl) {
+    const labelMap = { pending: 'Menunggu Verifikasi', verified: 'Terverifikasi ✓', rejected: 'Ditolak ✗' };
+    statusEl.textContent = labelMap[reg.payment_status] || reg.payment_status;
+    statusEl.style.color = s.cls === 'verified' ? 'var(--accent-green)' : s.cls === 'rejected' ? 'var(--color-rejected)' : 'var(--color-pending)';
+  }
+
+  const checkinEl = document.getElementById('st-checkin-status');
+  if (checkinEl) {
+    checkinEl.textContent = reg.checkin_status ? `Sudah Check-in (${formatTanggal(reg.checkin_at)})` : 'Belum Check-in';
+    checkinEl.style.color = reg.checkin_status ? 'var(--accent-green)' : 'var(--text-muted)';
+  }
+}
+
+/* ============================================================
+   DASHBOARD ADMIN — LOAD DATA
+   ============================================================ */
+async function loadDashboard() {
+  const result = await callSupabase(
+    supabase.from('registrations').select('*').order('created_at', { ascending: false })
+  );
+  if (!result.success) return;
+
+  allRegistrations = result.data;
+  renderKPICards(allRegistrations);
+  renderRecentTable(allRegistrations.slice(0, 8));
+  renderPaymentChart(allRegistrations);
+  renderDailyChart(allRegistrations);
+  renderAIInsight(allRegistrations);
+  subscribeRealtime();
+}
+
+function renderKPICards(data) {
+  const total    = data.length;
+  const verified = data.filter(r => r.payment_status === 'verified');
+  const pending  = data.filter(r => r.payment_status === 'pending').length;
+  const checkins = data.filter(r => r.checkin_status).length;
+  const revenue  = verified.reduce((sum, r) => sum + (r.grand_total || 0), 0);
+
+  const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  setEl('kpi-total',   total);
+  setEl('kpi-revenue', formatRupiah(revenue));
+  setEl('kpi-pending', pending);
+  setEl('kpi-checkin', `${checkins} / ${total}`);
+}
+
+function renderRecentTable(data) {
+  const tbody = document.getElementById('recent-reg-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = data.length === 0
+    ? '<tr><td colspan="6" class="text-center text-muted py-3">Belum ada data.</td></tr>'
+    : data.map(reg => `
       <tr>
-        <td><strong class="text-warning font-display">${reg.ticket_code}</strong></td>
+        <td><span class="font-mono" style="color:var(--accent-orange);font-size:12px">${reg.ticket_code}</span></td>
+        <td>${reg.father_name}</td>
+        <td>${reg.child_name}</td>
+        <td class="font-mono">${formatRupiah(reg.grand_total)}</td>
+        <td>${renderStatusBadge(reg.payment_status)}</td>
         <td>
-          <div class="fw-bold text-white">${reg.father_name}</div>
-          <div class="small text-muted">Anak: ${reg.child_name} (${reg.child_age}th)</div>
-        </td>
-        <td>
-          <a href="https://wa.me/${reg.whatsapp_number}" target="_blank" class="text-white text-decoration-none small">
-            <i class="fa-brands fa-whatsapp text-success me-1"></i> ${reg.whatsapp_number}
-          </a>
-        </td>
-        <td>
-          <div class="text-warning fw-bold">${formatRupiah(reg.grand_total)}</div>
-          <div class="small text-muted text-truncate" style="max-width: 180px;" title="${merchDesc}">${merchDesc}</div>
-        </td>
-        <td>
-          ${reg.payment_receipt_url ? `
-            <button class="btn btn-sm btn-outline-warning" onclick="openProofModal('${reg.id}')">
-              <i class="fa-solid fa-image me-1"></i> Cek Struk
-            </button>
-          ` : `<span class="badge bg-secondary">Belum Upload</span>`}
-        </td>
-        <td>
-          <span class="badge-status ${isVerified ? 'badge-verified' : isRejected ? 'badge-rejected' : 'badge-pending'}">
-            ${reg.payment_status}
-          </span>
-        </td>
-        <td>
-          <span class="badge bg-${reg.checkin_status ? 'success' : 'secondary'}">
-            ${reg.checkin_status ? 'SUDAH' : 'BELUM'}
-          </span>
-        </td>
-        <td>
-          <div class="btn-group btn-group-sm">
-            <button class="btn btn-sm btn-outline-success" title="Setujui Pembayaran" onclick="updatePaymentStatusDirect('${reg.id}', 'verified')">
-              <i class="fa-solid fa-check"></i>
-            </button>
-            <button class="btn btn-sm btn-outline-danger" title="Tolak" onclick="updatePaymentStatusDirect('${reg.id}', 'rejected')">
-              <i class="fa-solid fa-xmark"></i>
-            </button>
-          </div>
+          <button class="btn-table-action" onclick="openVerifyModal('${reg.id}')">
+            <i class="bi bi-eye-fill"></i> Detail
+          </button>
         </td>
       </tr>
-    `;
-  }).join('');
+    `).join('');
 }
 
-function filterRegistrationTable() {
-  const searchTerm = document.getElementById('table-search-input').value.toLowerCase();
-  const paymentFilter = document.getElementById('filter-payment-status').value;
-  const checkinFilter = document.getElementById('filter-checkin-status').value;
+function renderStatusBadge(status) {
+  const map = {
+    pending:  '<span class="status-badge badge-pending">Pending</span>',
+    verified: '<span class="status-badge badge-verified">Verified</span>',
+    rejected: '<span class="status-badge badge-rejected">Rejected</span>'
+  };
+  return map[status] || `<span class="status-badge">${status}</span>`;
+}
 
-  const filtered = appState.allRegistrations.filter(r => {
-    const matchSearch =
-      r.ticket_code.toLowerCase().includes(searchTerm) ||
-      r.father_name.toLowerCase().includes(searchTerm) ||
-      r.child_name.toLowerCase().includes(searchTerm) ||
-      r.whatsapp_number.includes(searchTerm);
+function renderPaymentChart(data) {
+  const canvas = document.getElementById('chart-payment-status');
+  if (!canvas) return;
 
-    const matchPayment = paymentFilter === 'all' || r.payment_status === paymentFilter;
-    const matchCheckin =
-      checkinFilter === 'all' ||
-      (checkinFilter === 'checked' && r.checkin_status) ||
-      (checkinFilter === 'not_checked' && !r.checkin_status);
+  const pending  = data.filter(r => r.payment_status === 'pending').length;
+  const verified = data.filter(r => r.payment_status === 'verified').length;
+  const rejected = data.filter(r => r.payment_status === 'rejected').length;
 
-    return matchSearch && matchPayment && matchCheckin;
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+  const textColor = isDark ? '#9CA3AF' : '#6B7280';
+
+  if (chartPayment) chartPayment.destroy();
+  chartPayment = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: ['Pending', 'Terverifikasi', 'Ditolak'],
+      datasets: [{
+        data: [pending, verified, rejected],
+        backgroundColor: ['rgba(251,191,36,0.6)', 'rgba(163,230,53,0.6)', 'rgba(248,113,113,0.6)'],
+        borderColor:     ['#FBBF24', '#A3E635', '#F87171'],
+        borderWidth: 2,
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { ticks: { color: textColor, stepSize: 1 }, grid: { color: gridColor } },
+        x: { ticks: { color: textColor }, grid: { display: false } }
+      }
+    }
+  });
+}
+
+function renderDailyChart(data) {
+  const canvas = document.getElementById('chart-daily-reg');
+  if (!canvas) return;
+
+  // Grouping per hari (7 hari terakhir)
+  const days = {};
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const key = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' });
+    days[key] = 0;
+  }
+  data.forEach(r => {
+    const d   = new Date(r.created_at);
+    const key = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' });
+    if (days[key] !== undefined) days[key]++;
   });
 
-  renderRegistrationsTable(filtered);
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const textColor = isDark ? '#9CA3AF' : '#6B7280';
+  const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+
+  if (chartDaily) chartDaily.destroy();
+  chartDaily = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: Object.keys(days),
+      datasets: [{
+        label: 'Pendaftar',
+        data: Object.values(days),
+        borderColor: '#FF6B00',
+        backgroundColor: 'rgba(255,107,0,0.1)',
+        borderWidth: 2,
+        fill: true, tension: 0.4,
+        pointBackgroundColor: '#FF6B00', pointRadius: 4
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { ticks: { color: textColor, stepSize: 1 }, grid: { color: gridColor } },
+        x: { ticks: { color: textColor }, grid: { display: false } }
+      }
+    }
+  });
 }
 
-// ── 14. Realtime Subscription ──
-function initRealtimeChannel() {
-  if (!supabase || appState.realtimeSubscription) return;
+function renderAIInsight(data) {
+  const el = document.getElementById('ai-insight-text');
+  if (!el) return;
 
-  appState.realtimeSubscription = supabase
+  const total    = data.length;
+  const verified = data.filter(r => r.payment_status === 'verified').length;
+  const pending  = data.filter(r => r.payment_status === 'pending').length;
+  const rejected = data.filter(r => r.payment_status === 'rejected').length;
+  const checkins = data.filter(r => r.checkin_status).length;
+  const revenue  = data.filter(r => r.payment_status === 'verified').reduce((s, r) => s + r.grand_total, 0);
+  const convRate = total > 0 ? ((verified / total) * 100).toFixed(1) : 0;
+
+  el.textContent = `Total ${total} peserta terdaftar dengan tingkat konversi pembayaran ${convRate}% (${verified} terverifikasi, ${pending} menunggu, ${rejected} ditolak). Total pendapatan terverifikasi ${formatRupiah(revenue)}. Check-in hari-H: ${checkins} dari ${verified} peserta yang bayar (${total > 0 ? ((checkins / Math.max(verified, 1)) * 100).toFixed(0) : 0}%). ${pending > 0 ? `⚠ Ada ${pending} pembayaran menunggu verifikasi manual.` : ''}`;
+}
+
+/* ============================================================
+   LOAD SEMUA REGISTRASI (Tab Peserta)
+   ============================================================ */
+async function loadAllRegistrations() {
+  const result = await callSupabase(
+    supabase.from('registrations').select('*').order('created_at', { ascending: false })
+  );
+  if (!result.success) return;
+  allRegistrations = result.data;
+  renderAllRegTable(allRegistrations);
+}
+
+function renderAllRegTable(data) {
+  const tbody = document.getElementById('all-reg-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = data.length === 0
+    ? '<tr><td colspan="9" class="text-center text-muted py-3">Tidak ada data.</td></tr>'
+    : data.map(reg => `
+      <tr>
+        <td><span class="font-mono" style="color:var(--accent-orange);font-size:11px">${reg.ticket_code}</span></td>
+        <td>${reg.father_name}</td>
+        <td>${reg.child_name}</td>
+        <td>${reg.child_age} thn</td>
+        <td><a href="https://wa.me/${reg.whatsapp_number}" target="_blank" style="color:var(--accent-green)">${reg.whatsapp_number}</a></td>
+        <td class="font-mono">${formatRupiah(reg.grand_total)}</td>
+        <td>${renderStatusBadge(reg.payment_status)}</td>
+        <td>${reg.checkin_status ? '<span class="status-badge badge-checkin">✓ Check-in</span>' : '<span class="status-badge" style="background:rgba(107,114,128,0.15);color:#6B7280">Belum</span>'}</td>
+        <td style="white-space:nowrap">
+          <button class="btn-table-action me-1" onclick="openVerifyModal('${reg.id}')">
+            <i class="bi bi-eye-fill"></i>
+          </button>
+          <button class="btn-table-action danger" onclick="deleteRegistration('${reg.id}', '${reg.ticket_code}')">
+            <i class="bi bi-trash3-fill"></i>
+          </button>
+        </td>
+      </tr>
+    `).join('');
+}
+
+function filterRegistrations(search) {
+  const statusFilter = document.getElementById('filter-status')?.value || '';
+  const q = (search || '').toLowerCase();
+  const filtered = allRegistrations.filter(r => {
+    const matchSearch = !q || r.father_name.toLowerCase().includes(q)
+      || r.child_name.toLowerCase().includes(q)
+      || r.ticket_code.toLowerCase().includes(q)
+      || (r.whatsapp_number || '').includes(q);
+    const matchStatus = !statusFilter || r.payment_status === statusFilter;
+    return matchSearch && matchStatus;
+  });
+  renderAllRegTable(filtered);
+}
+
+function exportCSV() {
+  const header = ['Kode Tiket', 'Nama Ayah', 'Nama Anak', 'Usia Anak', 'WhatsApp', 'Alamat', 'Total', 'Status Bayar', 'Status Check-in', 'Tgl Daftar'];
+  const rows = allRegistrations.map(r => [
+    r.ticket_code, r.father_name, r.child_name, r.child_age,
+    r.whatsapp_number, `"${r.address}"`, r.grand_total,
+    r.payment_status, r.checkin_status ? 'Hadir' : 'Belum',
+    new Date(r.created_at).toLocaleDateString('id-ID')
+  ]);
+  const csv = [header, ...rows].map(r => r.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = `MKJ_Peserta_${Date.now()}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  showToast('File CSV berhasil diunduh.', 'success');
+}
+
+/* ============================================================
+   MODAL VERIFIKASI BUKTI BAYAR
+   ============================================================ */
+async function openVerifyModal(regId) {
+  const result = await callSupabase(
+    supabase.from('registrations').select(`*, registration_merchandise(*)`).eq('id', regId).single()
+  );
+  if (!result.success) return;
+
+  const reg = result.data;
+  activeVerifyId = reg.id;
+
+  document.getElementById('modal-verify-title').textContent = `Detail — ${reg.ticket_code}`;
+
+  // Preview bukti bayar
+  const previewArea = document.getElementById('proof-preview-area');
+  if (reg.payment_receipt_url) {
+    const isPdf = reg.payment_receipt_url.toLowerCase().includes('.pdf');
+    previewArea.innerHTML = isPdf
+      ? `<iframe src="${reg.payment_receipt_url}" class="proof-iframe" title="Bukti Bayar PDF"></iframe>`
+      : `<img src="${reg.payment_receipt_url}" class="proof-img" alt="Bukti Bayar"
+          onclick="window.open('${reg.payment_receipt_url}', '_blank')" style="cursor:zoom-in" />`;
+  } else {
+    previewArea.innerHTML = `<div class="proof-placeholder"><i class="bi bi-image text-muted" style="font-size:3rem"></i><p class="text-muted mt-2 small">Belum ada bukti pembayaran</p></div>`;
+  }
+
+  // Info pendaftaran
+  const merch = reg.registration_merchandise || [];
+  const infoList = document.getElementById('verify-info-list');
+  infoList.innerHTML = [
+    { label: 'Kode Tiket',    value: reg.ticket_code },
+    { label: 'Nama Ayah',    value: reg.father_name },
+    { label: 'Nama Anak',    value: `${reg.child_name} (${reg.child_age} thn)` },
+    { label: 'WhatsApp',     value: reg.whatsapp_number },
+    { label: 'Alamat',       value: reg.address },
+    { label: 'Tiket',        value: formatRupiah(reg.ticket_price) },
+    ...merch.map(m => ({ label: m.item_name, value: `${m.quantity}× ${m.size} / ${m.color} = ${formatRupiah(m.subtotal)}` })),
+    { label: 'Total Bayar',  value: formatRupiah(reg.grand_total), highlight: true },
+    { label: 'Status Bayar', value: reg.payment_status.toUpperCase() },
+    { label: 'Status Check-in', value: reg.checkin_status ? `Hadir (${formatTanggal(reg.checkin_at)})` : 'Belum Hadir' },
+    { label: 'Tgl Daftar',  value: formatTanggal(reg.created_at) }
+  ].map(item => `
+    <div class="verify-info-item">
+      <span class="verify-info-label">${item.label}</span>
+      <span class="verify-info-value" style="${item.highlight ? 'color:var(--accent-orange);font-weight:700' : ''}">${item.value}</span>
+    </div>
+  `).join('');
+
+  openModal('modal-verify');
+}
+
+async function updatePaymentStatus(newStatus) {
+  if (!activeVerifyId) return;
+  const result = await callSupabase(
+    supabase.from('registrations').update({ payment_status: newStatus }).eq('id', activeVerifyId).select().single(),
+    newStatus === 'verified' ? 'Pembayaran berhasil diverifikasi!' : 'Pembayaran ditolak.'
+  );
+  if (result.success) {
+    closeModal('modal-verify');
+    loadDashboard();
+    loadAllRegistrations();
+  }
+}
+
+async function deleteRegistration(regId, ticketCode) {
+  if (!confirm(`Hapus pendaftaran ${ticketCode}? Tindakan ini tidak bisa dibatalkan.`)) return;
+  const result = await callSupabase(
+    supabase.from('registrations').delete().eq('id', regId),
+    `Pendaftaran ${ticketCode} berhasil dihapus.`
+  );
+  if (result.success) { loadAllRegistrations(); loadDashboard(); }
+}
+
+/* ============================================================
+   MASTER MERCHANDISE ADMIN
+   ============================================================ */
+async function loadMerchAdmin() {
+  const result = await callSupabase(
+    supabase.from('merchandise_items').select('*').order('created_at')
+  );
+  if (!result.success) return;
+
+  const tbody = document.getElementById('merch-admin-tbody');
+  if (!tbody) return;
+
+  tbody.innerHTML = result.data.length === 0
+    ? '<tr><td colspan="6" class="text-center text-muted py-3">Belum ada item merchandise.</td></tr>'
+    : result.data.map(item => `
+      <tr>
+        <td>
+          <div style="font-weight:600;font-size:13px">${item.name}</div>
+          <div style="font-size:11px;color:var(--text-muted)">${item.description || ''}</div>
+        </td>
+        <td class="font-mono">${formatRupiah(item.price)}</td>
+        <td style="font-size:11px">${(item.available_sizes || []).join(', ')}</td>
+        <td style="font-size:11px">${(item.available_colors || []).join(', ')}</td>
+        <td>${item.is_active
+          ? '<span class="status-badge badge-verified">Aktif</span>'
+          : '<span class="status-badge" style="background:rgba(107,114,128,0.15);color:#6B7280">Nonaktif</span>'}</td>
+        <td style="white-space:nowrap">
+          <button class="btn-table-action me-1" onclick="openMerchModal('${item.id}')">
+            <i class="bi bi-pencil-fill"></i>
+          </button>
+          <button class="btn-table-action danger" onclick="deleteMerch('${item.id}', '${item.name.replace(/'/g,'')}')">
+            <i class="bi bi-trash3-fill"></i>
+          </button>
+        </td>
+      </tr>
+    `).join('');
+}
+
+async function openMerchModal(itemId) {
+  document.getElementById('merch-id').value = '';
+  document.getElementById('merch-name').value  = '';
+  document.getElementById('merch-desc').value  = '';
+  document.getElementById('merch-price').value = '';
+  document.getElementById('merch-photo').value = '';
+  document.getElementById('merch-sizes').value = '';
+  document.getElementById('merch-colors').value = '';
+  document.getElementById('merch-active').value = 'true';
+  document.getElementById('modal-merch-title').textContent = 'Tambah Merchandise';
+
+  if (itemId) {
+    document.getElementById('modal-merch-title').textContent = 'Edit Merchandise';
+    const result = await callSupabase(
+      supabase.from('merchandise_items').select('*').eq('id', itemId).single()
+    );
+    if (result.success) {
+      const it = result.data;
+      document.getElementById('merch-id').value     = it.id;
+      document.getElementById('merch-name').value   = it.name;
+      document.getElementById('merch-desc').value   = it.description || '';
+      document.getElementById('merch-price').value  = it.price;
+      document.getElementById('merch-photo').value  = it.photo_url || '';
+      document.getElementById('merch-sizes').value  = (it.available_sizes || []).join(', ');
+      document.getElementById('merch-colors').value = (it.available_colors || []).join(', ');
+      document.getElementById('merch-active').value = String(it.is_active);
+    }
+  }
+  openModal('modal-merch');
+}
+
+async function saveMerch() {
+  const id      = document.getElementById('merch-id').value;
+  const name    = document.getElementById('merch-name').value.trim();
+  const desc    = document.getElementById('merch-desc').value.trim();
+  const price   = parseFloat(document.getElementById('merch-price').value);
+  const photo   = document.getElementById('merch-photo').value.trim();
+  const sizes   = document.getElementById('merch-sizes').value.split(',').map(s => s.trim()).filter(Boolean);
+  const colors  = document.getElementById('merch-colors').value.split(',').map(c => c.trim()).filter(Boolean);
+  const active  = document.getElementById('merch-active').value === 'true';
+
+  if (!name || !price || sizes.length === 0 || colors.length === 0) {
+    showToast('Nama, harga, ukuran, dan warna wajib diisi.', 'error'); return;
+  }
+
+  const payload = {
+    name, description: desc, price,
+    photo_url: photo || null,
+    available_sizes: sizes, available_colors: colors,
+    is_active: active
+  };
+
+  const promise = id
+    ? supabase.from('merchandise_items').update(payload).eq('id', id).select().single()
+    : supabase.from('merchandise_items').insert(payload).select().single();
+
+  const result = await callSupabase(promise, id ? 'Merchandise berhasil diperbarui.' : 'Merchandise berhasil ditambahkan.');
+  if (result.success) { closeModal('modal-merch'); loadMerchAdmin(); }
+}
+
+async function deleteMerch(itemId, name) {
+  if (!confirm(`Hapus "${name}"? Stok pesanan terdahulu tidak terpengaruh.`)) return;
+  const result = await callSupabase(
+    supabase.from('merchandise_items').delete().eq('id', itemId),
+    `"${name}" berhasil dihapus.`
+  );
+  if (result.success) loadMerchAdmin();
+}
+
+/* ============================================================
+   QR / BARCODE SCANNER
+   ============================================================ */
+function initScanner() {
+  const placeholder = document.getElementById('scanner-placeholder');
+  const video = document.getElementById('scanner-video');
+  if (placeholder) placeholder.style.display = 'flex';
+  if (video) video.style.display = 'none';
+}
+
+async function startScanner() {
+  const placeholder = document.getElementById('scanner-placeholder');
+  const video = document.getElementById('scanner-video');
+  const btnStart = document.getElementById('btn-start-scan');
+  const btnStop  = document.getElementById('btn-stop-scan');
+
+  try {
+    scannerStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment' }
+    });
+
+    if (video) { video.srcObject = scannerStream; video.style.display = 'block'; }
+    if (placeholder) placeholder.style.display = 'none';
+    if (btnStart) btnStart.classList.add('d-none');
+    if (btnStop)  btnStop.classList.remove('d-none');
+
+    // html5-qrcode sebagai scanner engine
+    if (window.Html5Qrcode) {
+      qrScanner = new Html5Qrcode('scanner-viewport', { verbose: false });
+      qrScanner.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 200, height: 200 } },
+        (decodedText) => {
+          processCheckin(decodedText);
+          stopScanner();
+        },
+        () => {}
+      ).catch(() => {});
+    } else {
+      showToast('Library scanner tidak tersedia. Gunakan input manual.', 'info');
+    }
+  } catch (err) {
+    showToast('Tidak dapat mengakses kamera. Periksa izin browser.', 'error');
+  }
+}
+
+function stopScanner() {
+  if (qrScanner) { qrScanner.stop().catch(() => {}); qrScanner = null; }
+  if (scannerStream) { scannerStream.getTracks().forEach(t => t.stop()); scannerStream = null; }
+  const placeholder = document.getElementById('scanner-placeholder');
+  const video = document.getElementById('scanner-video');
+  const btnStart = document.getElementById('btn-start-scan');
+  const btnStop  = document.getElementById('btn-stop-scan');
+  if (placeholder) placeholder.style.display = 'flex';
+  if (video) { video.srcObject = null; video.style.display = 'none'; }
+  if (btnStart) btnStart.classList.remove('d-none');
+  if (btnStop)  btnStop.classList.add('d-none');
+}
+
+async function processCheckin(rawCode) {
+  const code = (rawCode || '').trim().toUpperCase();
+  if (!code) { showToast('Masukkan kode tiket.', 'error'); return; }
+
+  const result = await callSupabase(
+    supabase.from('registrations').select('*').eq('ticket_code', code).single()
+  );
+
+  const resultArea = document.getElementById('scan-result-area');
+  const resultCard = document.getElementById('scan-result-card');
+  const resultIcon = document.getElementById('scan-result-icon');
+  const resultMsg  = document.getElementById('scan-result-message');
+  const resultDet  = document.getElementById('scan-result-detail');
+
+  if (resultArea) resultArea.classList.remove('d-none');
+
+  if (!result.success || !result.data) {
+    if (resultCard) resultCard.className = 'scan-result-card error';
+    if (resultIcon) resultIcon.innerHTML = '<i class="bi bi-x-circle-fill" style="color:var(--color-rejected);font-size:3rem"></i>';
+    if (resultMsg)  resultMsg.textContent = 'TIKET TIDAK DITEMUKAN';
+    if (resultDet)  resultDet.textContent = `Kode: ${code}`;
+    showToast('Tiket tidak ditemukan!', 'error');
+    playBeep(false); return;
+  }
+
+  const reg = result.data;
+
+  if (reg.payment_status !== 'verified') {
+    if (resultCard) resultCard.className = 'scan-result-card error';
+    if (resultIcon) resultIcon.innerHTML = '<i class="bi bi-exclamation-triangle-fill" style="color:var(--color-pending);font-size:3rem"></i>';
+    if (resultMsg)  resultMsg.textContent = 'PEMBAYARAN BELUM TERVERIFIKASI';
+    if (resultDet)  resultDet.textContent = `${reg.father_name} & ${reg.child_name} — Status: ${reg.payment_status}`;
+    showToast('Pembayaran belum terverifikasi!', 'error');
+    playBeep(false); return;
+  }
+
+  if (reg.checkin_status) {
+    if (resultCard) resultCard.className = 'scan-result-card error';
+    if (resultIcon) resultIcon.innerHTML = '<i class="bi bi-exclamation-circle-fill" style="color:var(--color-pending);font-size:3rem"></i>';
+    if (resultMsg)  resultMsg.textContent = 'TIKET SUDAH DIGUNAKAN';
+    if (resultDet)  resultDet.textContent = `${reg.father_name} & ${reg.child_name} — Check-in: ${formatTanggal(reg.checkin_at)}`;
+    showToast('Tiket ini sudah check-in sebelumnya!', 'error');
+    playBeep(false); return;
+  }
+
+  // Proses check-in
+  const updateResult = await callSupabase(
+    supabase.from('registrations').update({
+      checkin_status: true,
+      checkin_at: new Date().toISOString()
+    }).eq('id', reg.id),
+    null
+  );
+
+  if (updateResult.success) {
+    if (resultCard) resultCard.className = 'scan-result-card success';
+    if (resultIcon) resultIcon.innerHTML = '<i class="bi bi-check-circle-fill" style="color:var(--accent-green);font-size:3rem"></i>';
+    if (resultMsg)  resultMsg.textContent = 'CHECK-IN BERHASIL!';
+    if (resultDet)  resultDet.textContent = `${reg.father_name} & ${reg.child_name} | ${reg.ticket_code}`;
+    showToast(`✓ Check-in berhasil: ${reg.father_name} & ${reg.child_name}`, 'success');
+    playBeep(true);
+
+    // Clear manual input
+    const manualInput = document.getElementById('manual-ticket-code');
+    if (manualInput) manualInput.value = '';
+  }
+}
+
+function playBeep(success) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.value = success ? 880 : 300;
+    osc.type = 'sine';
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.4);
+  } catch (e) { /* Browser tanpa AudioContext */ }
+}
+
+/* ============================================================
+   PENGATURAN ADMIN
+   ============================================================ */
+async function loadSettings() {
+  const result = await callSupabase(supabase.from('app_config').select('*'));
+  if (!result.success) return;
+
+  const config = {};
+  result.data.forEach(row => { config[row.key] = row.value; });
+
+  const setVal = (id, key) => {
+    const el = document.getElementById(id);
+    if (el && config[key] !== undefined) el.value = config[key];
+  };
+
+  setVal('cfg-appName',        'appName');
+  setVal('cfg-eventDate',      'eventDate');
+  setVal('cfg-eventLocation',  'eventLocation');
+  setVal('cfg-ticketPrice',    'ticketPrice');
+  setVal('cfg-whatsappAdmin',  'whatsappAdmin');
+  setVal('cfg-bankName',       'bankName');
+  setVal('cfg-bankAccount',    'bankAccount');
+  setVal('cfg-bankHolder',     'bankHolder');
+  setVal('cfg-tagline',        'tagline');
+}
+
+async function saveSettings() {
+  const fields = {
+    appName:       document.getElementById('cfg-appName')?.value,
+    eventDate:     document.getElementById('cfg-eventDate')?.value,
+    eventLocation: document.getElementById('cfg-eventLocation')?.value,
+    ticketPrice:   document.getElementById('cfg-ticketPrice')?.value,
+    whatsappAdmin: document.getElementById('cfg-whatsappAdmin')?.value,
+    bankName:      document.getElementById('cfg-bankName')?.value,
+    bankAccount:   document.getElementById('cfg-bankAccount')?.value,
+    bankHolder:    document.getElementById('cfg-bankHolder')?.value,
+    tagline:       document.getElementById('cfg-tagline')?.value
+  };
+
+  const upserts = Object.entries(fields)
+    .filter(([, v]) => v !== undefined && v !== '')
+    .map(([key, value]) => ({ key, value }));
+
+  const result = await callSupabase(
+    supabase.from('app_config').upsert(upserts, { onConflict: 'key' }),
+    'Pengaturan berhasil disimpan!'
+  );
+
+  if (result.success) await loadAppConfig();
+}
+
+/* ============================================================
+   REALTIME SUBSCRIPTION
+   ============================================================ */
+function subscribeRealtime() {
+  if (realtimeChannel) return; // Sudah subscribe
+  realtimeChannel = supabase
     .channel('realtime:registrations')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'registrations' }, () => {
-      loadDashboardRegistrations();
+      // Reload dashboard secara silent saat ada perubahan
+      loadAllRegistrations();
+      callSupabase(
+        supabase.from('registrations').select('*').order('created_at', { ascending: false })
+      ).then(result => {
+        if (result.success) {
+          allRegistrations = result.data;
+          renderKPICards(allRegistrations);
+          renderRecentTable(allRegistrations.slice(0, 8));
+          renderAIInsight(allRegistrations);
+        }
+      });
     })
     .subscribe();
 }
 
-// ── 15. Modal Verifikasi Pembayaran ──
-let activeModalRegId = null;
-
-function openProofModal(regId) {
-  const reg = appState.allRegistrations.find(r => r.id === regId);
-  if (!reg) return;
-
-  activeModalRegId = regId;
-  document.getElementById('modal-proof-img').src = reg.payment_receipt_url || '';
-  document.getElementById('modal-proof-code').textContent = reg.ticket_code;
-  document.getElementById('modal-proof-father').textContent = reg.father_name;
-  document.getElementById('modal-proof-child').textContent = `${reg.child_name} (${reg.child_age} Thn)`;
-  document.getElementById('modal-proof-total').textContent = formatRupiah(reg.grand_total);
-
-  const hasMerch = reg.registration_merchandise && reg.registration_merchandise.length > 0;
-  document.getElementById('modal-proof-merch').textContent = hasMerch
-    ? reg.registration_merchandise.map(m => `${m.quantity}x ${m.item_name} (${m.size}/${m.color})`).join(', ')
-    : 'Tiket Saja (Tanpa Merch)';
-
-  const modal = new bootstrap.Modal(document.getElementById('modal-proof-preview'));
-  modal.show();
+/* ============================================================
+   MODAL HELPERS
+   ============================================================ */
+function openModal(modalId) {
+  const modal = document.getElementById(modalId);
+  if (modal) modal.classList.remove('d-none');
+  document.body.style.overflow = 'hidden';
 }
 
-async function confirmVerifyPayment(status) {
-  if (!activeModalRegId) return;
-  await updatePaymentStatusDirect(activeModalRegId, status);
-  const modalEl = document.getElementById('modal-proof-preview');
-  const modal = bootstrap.Modal.getInstance(modalEl);
-  if (modal) modal.hide();
+function closeModal(modalId) {
+  const modal = document.getElementById(modalId);
+  if (modal) modal.classList.add('d-none');
+  document.body.style.overflow = '';
+  if (modalId === 'modal-verify') activeVerifyId = null;
 }
 
-async function updatePaymentStatusDirect(regId, status) {
-  if (supabase) {
-    await callSupabase(
-      supabase.from('registrations').update({ payment_status: status }).eq('id', regId),
-      `Status pembayaran diubah menjadi ${status}!`
-    );
-    loadDashboardRegistrations();
+// Klik overlay untuk tutup modal
+document.addEventListener('click', (e) => {
+  if (e.target.classList.contains('modal-overlay')) {
+    e.target.classList.add('d-none');
+    document.body.style.overflow = '';
+    activeVerifyId = null;
+  }
+});
+
+/* ============================================================
+   INIT APLIKASI
+   ============================================================ */
+(async function init() {
+  // Cek apakah user sudah login
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) {
+    await loadCurrentProfile(session.user.id);
+    navigateTo('dashboard');
   } else {
-    const target = appState.allRegistrations.find(r => r.id === regId);
-    if (target) target.payment_status = status;
-    updateKpiMetrics(appState.allRegistrations);
-    renderRegistrationsTable(appState.allRegistrations);
-    showToast(`Status pembayaran diubah menjadi ${status}! (Demo Mode)`, 'success');
+    navigateTo('public');
   }
-}
-
-// ── 16. Smartphone QR Scanner Check-in ──
-function initQrScanner() {
-  if (typeof Html5Qrcode === 'undefined') {
-    showToast('Library scanner belum siap.', 'error');
-    return;
-  }
-
-  if (appState.html5QrScanner) {
-    stopScanner();
-  }
-
-  appState.html5QrScanner = new Html5Qrcode('qr-reader');
-  const config = { fps: 10, qrbox: { width: 250, height: 250 } };
-
-  appState.html5QrScanner.start(
-    { facingMode: 'environment' },
-    config,
-    onQrCodeSuccess,
-    (err) => { /* ignore frame errors */ }
-  ).catch(err => {
-    console.error('Camera start error:', err);
-    showToast('Gagal mengakses kamera. Izinkan akses kamera pada browser Anda.', 'error');
-  });
-}
-
-function stopScanner() {
-  if (appState.html5QrScanner) {
-    try {
-      appState.html5QrScanner.stop().then(() => {
-        appState.html5QrScanner.clear();
-        appState.html5QrScanner = null;
-      });
-    } catch (e) {
-      appState.html5QrScanner = null;
-    }
-  }
-}
-
-function restartScanner() {
-  stopScanner();
-  setTimeout(() => initQrScanner(), 300);
-}
-
-function switchCamera() {
-  restartScanner();
-}
-
-function onQrCodeSuccess(decodedText) {
-  if (!decodedText) return;
-  stopScanner();
-  processTicketCheckin(decodedText.trim());
-}
-
-async function processTicketCheckin(ticketCode) {
-  if (!ticketCode) {
-    showToast('Masukkan kode tiket!', 'warning');
-    return;
-  }
-
-  showLoading('Memvalidasi tiket peserta...');
-  try {
-    let reg = null;
-    if (supabase) {
-      const { data, error } = await supabase
-        .from('registrations')
-        .select('*, registration_merchandise(*)')
-        .eq('ticket_code', ticketCode.toUpperCase())
-        .maybeSingle();
-
-      if (error) throw error;
-      reg = data;
-    } else {
-      reg = appState.allRegistrations.find(r => r.ticket_code.toUpperCase() === ticketCode.toUpperCase());
-    }
-
-    if (!reg) {
-      showScanResultModal(false, 'TIKET TIDAK DITEMUKAN', `Kode "${ticketCode}" tidak terdaftar di sistem.`, null);
-      return;
-    }
-
-    if (reg.payment_status !== 'verified') {
-      showScanResultModal(false, 'PEMBAYARAN BELUM LUNAS', `Tiket ${ticketCode} berstatus "${reg.payment_status}". Arahkan peserta ke meja penyelesaian administrasi.`, reg);
-      return;
-    }
-
-    if (reg.checkin_status) {
-      showScanResultModal(false, 'TIKET SUDAH CHECK-IN', `Tiket ${ticketCode} sudah pernah digunakan check-in sebelumnya!`, reg);
-      return;
-    }
-
-    // Eksekusi Check-in Berhasil
-    if (supabase) {
-      await supabase
-        .from('registrations')
-        .update({ checkin_status: true, checkin_at: new Date().toISOString() })
-        .eq('id', reg.id);
-    } else {
-      reg.checkin_status = true;
-    }
-
-    showScanResultModal(true, 'CHECK-IN BERHASIL!', `Selamat datang di event Motoran Karo Jasak #1!`, reg);
-  } catch (err) {
-    console.error('Checkin error:', err);
-    showToast(err.message || 'Gagal memproses check-in tiket.', 'error');
-  } finally {
-    hideLoading();
-  }
-}
-
-function showScanResultModal(isSuccess, title, subtitle, reg) {
-  const iconContainer = document.getElementById('scan-icon-container');
-  const titleEl = document.getElementById('scan-result-title');
-  const subEl = document.getElementById('scan-result-subtitle');
-  const detailsEl = document.getElementById('scan-result-details');
-
-  iconContainer.innerHTML = isSuccess
-    ? `<i class="fa-solid fa-circle-check text-success"></i>`
-    : `<i class="fa-solid fa-circle-xmark text-danger"></i>`;
-
-  titleEl.textContent = title;
-  titleEl.className = `font-display mb-1 ${isSuccess ? 'text-success' : 'text-danger'}`;
-  subEl.textContent = subtitle;
-
-  if (reg) {
-    const hasMerch = reg.registration_merchandise && reg.registration_merchandise.length > 0;
-    detailsEl.innerHTML = `
-      <div class="small mb-1">Kode Tiket: <strong class="text-warning">${reg.ticket_code}</strong></div>
-      <div class="small mb-1">Nama Ayah: <strong class="text-white">${reg.father_name}</strong></div>
-      <div class="small mb-1">Nama Anak: <strong class="text-white">${reg.child_name} (${reg.child_age} Thn)</strong></div>
-      <div class="small mb-1">WhatsApp: <strong class="text-white">${reg.whatsapp_number}</strong></div>
-      <hr class="border-secondary my-2" />
-      <div class="small fw-bold text-warning mb-1">PENGAMBILAN MERCHANDISE DI MEJA REGISTRASI:</div>
-      <div class="small text-white">${hasMerch ? reg.registration_merchandise.map(m => `📦 <strong>${m.quantity}x ${m.item_name}</strong> (Size: ${m.size} | Warna: ${m.color})`).join('<br>') : '🎫 <em>Paket Standar (Sticker, Kupon, Medali)</em>'}</div>
-    `;
-    detailsEl.classList.remove('d-none');
-  } else {
-    detailsEl.classList.add('d-none');
-  }
-
-  const modal = new bootstrap.Modal(document.getElementById('modal-scan-result'));
-  modal.show();
-}
-
-// ── 17. Export Data ke CSV ──
-function exportDataToCSV() {
-  if (appState.allRegistrations.length === 0) {
-    showToast('Tidak ada data untuk diekspor.', 'warning');
-    return;
-  }
-
-  const headers = ['Kode Tiket', 'Nama Ayah', 'Nama Anak', 'Usia Anak', 'WhatsApp', 'Alamat', 'Total Biaya', 'Status Bayar', 'Status Checkin', 'Merchandise'];
-  const rows = appState.allRegistrations.map(r => {
-    const merch = (r.registration_merchandise || []).map(m => `${m.quantity}x ${m.item_name} (${m.size}/${m.color})`).join('; ');
-    return [
-      r.ticket_code,
-      `"${r.father_name}"`,
-      `"${r.child_name}"`,
-      r.child_age,
-      `"${r.whatsapp_number}"`,
-      `"${r.address.replace(/"/g, '""')}"`,
-      r.grand_total,
-      r.payment_status,
-      r.checkin_status ? 'Sudah' : 'Belum',
-      `"${merch}"`
-    ];
-  });
-
-  const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
-  const encodedUri = encodeURI(csvContent);
-  const link = document.createElement('a');
-  link.setAttribute('href', encodedUri);
-  link.setAttribute('download', `MKJ_Registrations_${new Date().toISOString().slice(0, 10)}.csv`);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-}
-
-// ── 18. Utilities: Copy Text & Nominal ──
-function copyText(elementId, msg) {
-  const el = document.getElementById(elementId);
-  if (!el) return;
-  navigator.clipboard.writeText(el.textContent.trim());
-  showToast(msg || 'Teks disalin ke clipboard!', 'success');
-}
-
-function copyNominal(elementId) {
-  const el = document.getElementById(elementId);
-  if (!el) return;
-  const rawNum = el.textContent.replace(/\D/g, '');
-  navigator.clipboard.writeText(rawNum);
-  showToast('Nominal transfer disalin!', 'success');
-}
-
-// ── 19. Theme Switcher ──
-function toggleTheme() {
-  const html = document.documentElement;
-  const current = html.getAttribute('data-theme') || 'dark';
-  const next = current === 'dark' ? 'light' : 'dark';
-  html.setAttribute('data-theme', next);
-  localStorage.setItem('mkj_theme', next);
-
-  const icon = document.getElementById('theme-icon');
-  if (icon) {
-    icon.className = next === 'dark' ? 'fa-solid fa-moon' : 'fa-solid fa-sun text-warning';
-  }
-}
-
-function initTheme() {
-  const saved = localStorage.getItem('mkj_theme') || 'dark';
-  document.documentElement.setAttribute('data-theme', saved);
-  const icon = document.getElementById('theme-icon');
-  if (icon) {
-    icon.className = saved === 'dark' ? 'fa-solid fa-moon' : 'fa-solid fa-sun text-warning';
-  }
-}
+})();
