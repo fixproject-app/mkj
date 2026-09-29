@@ -4,11 +4,9 @@
    Supabase SPA Client
    ============================================================ */
 
-'use strict';
-
 // ── Konfigurasi Supabase ──
 // Ganti dengan Project URL dan Anon Key dari dashboard Supabase Anda
-const SUPABASE_URL      = 'sb_publishable_5y0_SGaMs4orUa73JtAC5A_iylznVCP';
+const SUPABASE_URL      = 'https://YOUR_PROJECT_ID.supabase.co';
 const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY';
 
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -122,8 +120,18 @@ function navigateTo(sectionId) {
   const target = document.getElementById(`section-${sectionId}`);
   if (target) target.classList.remove('d-none');
 
-  // Cleanup scanner saat pindah halaman
-  if (sectionId !== 'dashboard') stopScanner();
+  // Cleanup scanner saat pindah halaman (guard: hanya panggil kalau sudah aktif)
+  if (sectionId !== 'scanner' && typeof stopScanner === 'function') {
+    // Hentikan stream kamera kalau ada
+    if (typeof scannerStream !== 'undefined' && scannerStream) {
+      scannerStream.getTracks().forEach(t => t.stop());
+      scannerStream = null;
+    }
+    if (typeof qrScanner !== 'undefined' && qrScanner) {
+      qrScanner.stop().catch(() => {});
+      qrScanner = null;
+    }
+  }
 
   // Load data sesuai section
   if (sectionId === 'public')    loadPublicPage();
@@ -175,7 +183,9 @@ async function signIn() {
 }
 
 async function signOut() {
-  stopScanner();
+  // Hentikan kamera kalau aktif
+  if (scannerStream) { scannerStream.getTracks().forEach(t => t.stop()); scannerStream = null; }
+  if (qrScanner) { qrScanner.stop().catch(() => {}); qrScanner = null; }
   if (realtimeChannel) { supabaseClient.removeChannel(realtimeChannel); realtimeChannel = null; }
   await supabaseClient.auth.signOut();
   currentProfile = null;
