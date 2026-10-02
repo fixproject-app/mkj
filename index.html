@@ -356,6 +356,14 @@
               </div>
             </div>
 
+            <!-- Tombol Tiket Digital -->
+            <div id="btn-ticket-wrap" class="d-none mb-3">
+              <button class="btn-primary-orange w-100" onclick="openTicketPage()">
+                <i class="bi bi-ticket-perforated-fill me-2"></i>
+                Lihat &amp; Download Tiket Digital
+              </button>
+            </div>
+
             <!-- Cek Status Form -->
             <div class="form-card">
               <div class="form-card-header">
@@ -379,6 +387,150 @@
         </div>
       </div>
     </div><!-- /section-status -->
+
+
+    <!-- ======================================================= -->
+    <!-- SECTION: TIKET DIGITAL                                  -->
+    <!-- ======================================================= -->
+    <div id="section-ticket" class="app-section d-none">
+      <header class="public-header">
+        <div class="container py-3">
+          <div class="d-flex align-items-center justify-content-between">
+            <div class="d-flex align-items-center gap-3">
+              <button class="btn-back" onclick="navigateTo('status')">
+                <i class="bi bi-arrow-left"></i>
+              </button>
+              <div class="mkj-logo-badge">MKJ</div>
+              <div class="mkj-brand-name">TIKET DIGITAL</div>
+            </div>
+            <div class="d-flex gap-2">
+              <button class="btn-primary-orange" onclick="downloadTicket()">
+                <i class="bi bi-download me-2"></i>Download PNG
+              </button>
+              <button class="btn-sm-outline" onclick="shareTicket()">
+                <i class="bi bi-share me-1"></i>Bagikan
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div class="container py-4 pb-5">
+        <div class="row justify-content-center">
+          <div class="col-12 col-md-8 col-lg-6">
+
+            <!-- INFO: Status Tiket -->
+            <div id="ticket-status-notice" class="ticket-notice mb-3 d-none">
+              <i class="bi bi-info-circle-fill me-2"></i>
+              <span id="ticket-notice-text"></span>
+            </div>
+
+            <!-- TIKET DIGITAL — area yang akan di-screenshot -->
+            <div id="ticket-card" class="ticket-card">
+
+              <!-- Header Tiket -->
+              <div class="ticket-header">
+                <div class="ticket-header-left">
+                  <div class="ticket-logo">MKJ</div>
+                  <div>
+                    <div class="ticket-event-name">MOTORAN KARO JASAK</div>
+                    <div class="ticket-event-sub">Event Touring Ayah &amp; Anak</div>
+                  </div>
+                </div>
+                <div class="ticket-year">2026</div>
+              </div>
+
+              <!-- Body Tiket -->
+              <div class="ticket-body">
+                <!-- Info Peserta -->
+                <div class="ticket-info-section">
+                  <div class="ticket-field">
+                    <span class="ticket-field-label">NAMA AYAH</span>
+                    <span class="ticket-field-value" id="tkt-father-name">—</span>
+                  </div>
+                  <div class="ticket-field">
+                    <span class="ticket-field-label">NAMA ANAK</span>
+                    <span class="ticket-field-value" id="tkt-child-name">—</span>
+                  </div>
+                  <div class="ticket-field-row">
+                    <div class="ticket-field">
+                      <span class="ticket-field-label">USIA ANAK</span>
+                      <span class="ticket-field-value" id="tkt-child-age">—</span>
+                    </div>
+                    <div class="ticket-field">
+                      <span class="ticket-field-label">TANGGAL EVENT</span>
+                      <span class="ticket-field-value" id="tkt-event-date">—</span>
+                    </div>
+                  </div>
+                  <div class="ticket-field">
+                    <span class="ticket-field-label">LOKASI</span>
+                    <span class="ticket-field-value" id="tkt-event-location">—</span>
+                  </div>
+                </div>
+
+                <!-- Divider Sobek -->
+                <div class="ticket-tear-divider">
+                  <div class="tear-circle left"></div>
+                  <div class="tear-line"></div>
+                  <div class="tear-circle right"></div>
+                </div>
+
+                <!-- Kode & QR Section -->
+                <div class="ticket-code-section">
+                  <div class="ticket-code-left">
+                    <!-- QR Code -->
+                    <div class="ticket-qr-wrap">
+                      <div id="ticket-qr-code"></div>
+                    </div>
+                    <div class="ticket-qr-label">Scan untuk verifikasi</div>
+                  </div>
+                  <div class="ticket-code-right">
+                    <div class="ticket-code-label">KODE TIKET</div>
+                    <div class="ticket-code-value" id="tkt-ticket-code">MKJ-2026-XXXX</div>
+                    <!-- Barcode -->
+                    <div class="ticket-barcode-wrap">
+                      <svg id="ticket-barcode"></svg>
+                    </div>
+                    <div class="ticket-status-badge" id="tkt-status-badge">
+                      <span id="tkt-status-text">PENDING</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Footer Tiket -->
+              <div class="ticket-footer">
+                <span id="tkt-tagline">Gas Bareng, Kenangan Bareng, Bersama Ayah Tercinta.</span>
+                <span class="ticket-footer-url">mkj-chi.vercel.app</span>
+              </div>
+
+            </div><!-- /ticket-card -->
+
+            <!-- Cek Tiket Lain -->
+            <div class="form-card mt-4">
+              <div class="form-card-header">
+                <div class="step-badge"><i class="bi bi-search"></i></div>
+                <div>
+                  <h2 class="form-card-title">Cek Tiket Lain</h2>
+                  <p class="form-card-sub">Masukkan kode tiket untuk melihat tiket digital</p>
+                </div>
+              </div>
+              <div class="form-card-body">
+                <div class="input-group-custom">
+                  <input type="text" id="ticket-check-input" class="form-input-custom text-uppercase"
+                    placeholder="Contoh: MKJ-2026-0001"
+                    onkeydown="if(event.key==='Enter') loadTicketByCode(this.value)" />
+                  <button class="btn-primary-orange" onclick="loadTicketByCode(document.getElementById('ticket-check-input').value)">
+                    <i class="bi bi-ticket-fill me-1"></i>Tampilkan
+                  </button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div><!-- /section-ticket -->
 
 
     <!-- ======================================================= -->
@@ -588,6 +740,9 @@
               </select>
               <button class="btn-sm-outline" onclick="exportCSV()">
                 <i class="bi bi-download me-1"></i>Export CSV
+              </button>
+              <button class="btn-sm-outline" onclick="openAdminTicketModal()">
+                <i class="bi bi-ticket-perforated-fill me-1"></i>Cetak Tiket
               </button>
             </div>
           </div>
@@ -878,6 +1033,12 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- html5-qrcode untuk scanner barcode/QR -->
   <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <!-- QRCode.js untuk generate QR Code tiket -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <!-- JsBarcode untuk generate Barcode tiket -->
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+  <!-- html2canvas untuk download tiket sebagai PNG -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
