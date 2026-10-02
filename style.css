@@ -1259,3 +1259,199 @@ textarea.form-input-custom { resize: vertical; min-height: 72px; }
 .text-green  { color: var(--accent-green); }
 .accent-orange { color: var(--accent-orange); }
 .font-mono { font-family: var(--font-mono); }
+
+/* ============================================================
+   TIKET DIGITAL
+   ============================================================ */
+
+/* Notice bar atas tiket */
+.ticket-notice {
+  display: flex; align-items: center;
+  padding: 10px 16px;
+  border-radius: var(--radius-md);
+  font-size: 13px; font-weight: 600;
+  background: rgba(251,191,36,0.12);
+  border: 1px solid var(--color-pending);
+  color: var(--color-pending);
+}
+
+/* KARTU TIKET UTAMA */
+.ticket-card {
+  background: #111111;
+  border: 1px solid #333;
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,107,0,0.2);
+  font-family: var(--font-body);
+}
+
+[data-theme="light"] .ticket-card {
+  background: #1a1a1a;
+}
+
+/* Header Tiket */
+.ticket-header {
+  background: linear-gradient(135deg, #FF6B00 0%, #cc4400 100%);
+  padding: 18px 22px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.ticket-header-left { display: flex; align-items: center; gap: 12px; }
+.ticket-logo {
+  width: 44px; height: 44px;
+  background: rgba(0,0,0,0.25);
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display);
+  font-size: 15px; color: #fff;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+.ticket-event-name {
+  font-family: var(--font-display);
+  font-size: 16px; color: #fff;
+  letter-spacing: 0.08em; line-height: 1.1;
+}
+.ticket-event-sub {
+  font-size: 11px; color: rgba(255,255,255,0.75);
+  margin-top: 2px; font-family: var(--font-mono);
+}
+.ticket-year {
+  font-family: var(--font-display);
+  font-size: 32px; color: rgba(255,255,255,0.2);
+  letter-spacing: 0.05em; line-height: 1;
+}
+
+/* Body Tiket */
+.ticket-body { padding: 20px 22px; }
+
+.ticket-info-section { margin-bottom: 16px; }
+.ticket-field { margin-bottom: 10px; }
+.ticket-field-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  margin-bottom: 10px;
+}
+.ticket-field-label {
+  display: block;
+  font-size: 9px; font-weight: 700;
+  color: #666; text-transform: uppercase;
+  letter-spacing: 0.1em; font-family: var(--font-mono);
+  margin-bottom: 2px;
+}
+.ticket-field-value {
+  display: block;
+  font-size: 15px; font-weight: 700;
+  color: #fff; line-height: 1.2;
+}
+
+/* Divider Sobek */
+.ticket-tear-divider {
+  display: flex; align-items: center;
+  margin: 0 -22px 18px;
+  position: relative;
+}
+.tear-circle {
+  width: 20px; height: 20px;
+  background: var(--bg-primary);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+[data-theme="light"] .tear-circle { background: #F5F5F5; }
+.tear-circle.left  { margin-left: -10px; border: 1px solid #333; border-left: none; }
+.tear-circle.right { margin-right: -10px; border: 1px solid #333; border-right: none; }
+.tear-line {
+  flex: 1;
+  border-top: 2px dashed #333;
+}
+
+/* QR + Barcode Section */
+.ticket-code-section {
+  display: flex; gap: 18px; align-items: flex-start;
+}
+.ticket-code-left {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 6px; flex-shrink: 0;
+}
+.ticket-qr-wrap {
+  background: #fff;
+  padding: 8px; border-radius: 6px;
+  display: inline-flex;
+}
+.ticket-qr-wrap canvas,
+.ticket-qr-wrap img { display: block; }
+.ticket-qr-label {
+  font-size: 9px; color: #666;
+  font-family: var(--font-mono);
+  text-align: center;
+  letter-spacing: 0.04em;
+}
+
+.ticket-code-right { flex: 1; }
+.ticket-code-label {
+  font-size: 9px; font-weight: 700;
+  color: #666; text-transform: uppercase;
+  letter-spacing: 0.1em; font-family: var(--font-mono);
+  margin-bottom: 4px;
+}
+.ticket-code-value {
+  font-family: var(--font-mono);
+  font-size: 18px; font-weight: 700;
+  color: #FF6B00; letter-spacing: 0.05em;
+  margin-bottom: 10px;
+}
+.ticket-barcode-wrap {
+  background: #fff;
+  padding: 6px 8px 4px; border-radius: 4px;
+  display: inline-block; margin-bottom: 10px;
+  max-width: 100%;
+}
+.ticket-barcode-wrap svg { display: block; max-width: 100%; height: auto; }
+
+.ticket-status-badge {
+  display: inline-flex; align-items: center;
+  padding: 4px 12px; border-radius: var(--radius-xl);
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.08em; font-family: var(--font-mono);
+  text-transform: uppercase;
+}
+.ticket-status-badge.verified { background: rgba(163,230,53,0.15); color: #A3E635; border: 1px solid #A3E635; }
+.ticket-status-badge.pending  { background: rgba(251,191,36,0.15); color: #FBBF24; border: 1px solid #FBBF24; }
+.ticket-status-badge.rejected { background: rgba(248,113,113,0.15); color: #F87171; border: 1px solid #F87171; }
+
+/* Footer Tiket */
+.ticket-footer {
+  background: #0a0a0a;
+  border-top: 1px solid #222;
+  padding: 12px 22px;
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 10px; color: #555;
+  font-family: var(--font-mono);
+}
+.ticket-footer-url { color: #FF6B00; }
+
+/* Download animasi */
+@keyframes downloadPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(255,107,0,0.4); }
+  70%  { box-shadow: 0 0 0 10px rgba(255,107,0,0); }
+  100% { box-shadow: 0 0 0 0 rgba(255,107,0,0); }
+}
+.downloading { animation: downloadPulse 0.6s ease; }
+
+/* Modal Cetak Tiket Admin */
+.admin-ticket-select-list {
+  max-height: 320px; overflow-y: auto;
+}
+.admin-ticket-select-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.admin-ticket-select-item:hover { border-color: var(--accent-orange); background: var(--accent-orange-light); }
+
+@media print {
+  body > *:not(#ticket-print-area) { display: none !important; }
+  .ticket-card { box-shadow: none; border: 1px solid #ccc; }
+}
