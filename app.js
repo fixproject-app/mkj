@@ -1,1298 +1,1044 @@
-/* ============================================================
-   MKJ Web — app.js
-   Motoran Karo Jasak — Sistem Pendaftaran & Merchandise Event
-   Supabase SPA Client
-   ============================================================ */
+<!DOCTYPE html>
+<html lang="id" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>MKJ Web — Motoran Karo Jasak</title>
+  <meta name="description" content="Platform pendaftaran event motoran ayah-anak, pemesanan merchandise resmi, dan manajemen check-in tiket." />
 
-// ── Konfigurasi Supabase ──
-// Ganti dengan Project URL dan Anon Key dari dashboard Supabase Anda
-const SUPABASE_URL      = 'https://srsifsztyrwsjijismvu.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_5y0_SGaMs4orUa73JtAC5A_iylznVCP';
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 
-const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  <!-- Bootstrap 5 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
 
-// ── State Global ──
-let currentProfile    = null;
-let allRegistrations  = [];
-let allMerchandise    = [];
-let selectedMerch     = {};   // { merchandise_id: { qty, size, color } }
-let currentRegId      = null; // ID registrasi terakhir dibuat
-let currentTicketCode = null;
-let currentGrandTotal = 75000;
-let currentConfig     = {};
-let selectedFile      = null;
-let chartPayment      = null;
-let chartDaily        = null;
-let scannerStream     = null;
-let qrScanner         = null;
-let activeVerifyId    = null;
-let realtimeChannel   = null;
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet" />
 
-/* ============================================================
-   HELPER: LOADING OVERLAY
-   ============================================================ */
-function showLoading() {
-  document.getElementById('loading-overlay').classList.remove('d-none');
-}
-function hideLoading() {
-  document.getElementById('loading-overlay').classList.add('d-none');
-}
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
 
-/* ============================================================
-   HELPER: TOAST NOTIFIKASI
-   ============================================================ */
-function showToast(message, type = 'success') {
-  const container = document.getElementById('toast-container');
-  const toast = document.createElement('div');
-  toast.className = `toast-item toast-${type}`;
-  toast.innerHTML = `<i class="bi bi-${type === 'success' ? 'check-circle-fill' : type === 'error' ? 'exclamation-circle-fill' : 'info-circle-fill'} me-2"></i>${message}`;
-  container.appendChild(toast);
-  setTimeout(() => {
-    toast.style.transition = 'opacity 0.3s';
-    toast.style.opacity = '0';
-    setTimeout(() => toast.remove(), 300);
-  }, 3500);
-}
+  <!-- ============================================================ -->
+  <!-- LOADING OVERLAY                                              -->
+  <!-- ============================================================ -->
+  <div id="loading-overlay" class="d-none">
+    <div class="loading-inner">
+      <div class="spinner-ring"></div>
+      <span class="loading-text">Loading...</span>
+    </div>
+  </div>
 
-/* ============================================================
-   HELPER: WRAPPER SUPABASE CALL
-   ============================================================ */
-async function callSupabase(promise, successMessage) {
-  showLoading();
-  try {
-    const { data, error } = await promise;
-    if (error) throw error;
-    if (successMessage) showToast(successMessage, 'success');
-    return { success: true, data };
-  } catch (err) {
-    showToast(err.message || 'Terjadi kesalahan. Silakan coba lagi.', 'error');
-    return { success: false, data: null, message: err.message };
-  } finally {
-    hideLoading();
-  }
-}
+  <!-- ============================================================ -->
+  <!-- TOAST CONTAINER                                              -->
+  <!-- ============================================================ -->
+  <div id="toast-container"></div>
 
-/* ============================================================
-   HELPER: FORMAT MATA UANG
-   ============================================================ */
-function formatRupiah(angka) {
-  return 'Rp ' + Number(angka).toLocaleString('id-ID');
-}
+  <!-- ============================================================ -->
+  <!-- APP WRAPPER                                                   -->
+  <!-- ============================================================ -->
+  <div id="app">
 
-/* ============================================================
-   HELPER: FORMAT TANGGAL
-   ============================================================ */
-function formatTanggal(isoStr) {
-  if (!isoStr) return '—';
-  const d = new Date(isoStr);
-  return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
-}
+    <!-- ======================================================= -->
+    <!-- SECTION: HALAMAN PUBLIK (Form Registrasi)               -->
+    <!-- ======================================================= -->
+    <div id="section-public" class="app-section">
 
-/* ============================================================
-   HELPER: GENERATE KODE TIKET
-   ============================================================ */
-function generateTicketCode() {
-  const tahun = new Date().getFullYear();
-  const random = String(Math.floor(1000 + Math.random() * 9000));
-  return `MKJ-${tahun}-${random}`;
-}
-
-/* ============================================================
-   DARK MODE TOGGLE
-   ============================================================ */
-function toggleDarkMode() {
-  const html = document.documentElement;
-  const isDark = html.getAttribute('data-theme') === 'dark';
-  html.setAttribute('data-theme', isDark ? 'light' : 'dark');
-  localStorage.setItem('mkj_theme', isDark ? 'light' : 'dark');
-}
-
-(function initTheme() {
-  const saved = localStorage.getItem('mkj_theme') || 'dark';
-  document.documentElement.setAttribute('data-theme', saved);
-})();
-
-/* ============================================================
-   SPA NAVIGATION
-   ============================================================ */
-function navigateTo(sectionId) {
-  document.querySelectorAll('.app-section').forEach(el => el.classList.add('d-none'));
-  const target = document.getElementById(`section-${sectionId}`);
-  if (target) target.classList.remove('d-none');
-
-  // Cleanup scanner saat pindah halaman (guard: hanya panggil kalau sudah aktif)
-  if (sectionId !== 'scanner' && typeof stopScanner === 'function') {
-    // Hentikan stream kamera kalau ada
-    if (typeof scannerStream !== 'undefined' && scannerStream) {
-      scannerStream.getTracks().forEach(t => t.stop());
-      scannerStream = null;
-    }
-    if (typeof qrScanner !== 'undefined' && qrScanner) {
-      qrScanner.stop().catch(() => {});
-      qrScanner = null;
-    }
-  }
-
-  // Load data sesuai section
-  if (sectionId === 'public')    loadPublicPage();
-  if (sectionId === 'dashboard') loadDashboard();
-}
-
-/* ============================================================
-   ADMIN TAB SWITCHER
-   ============================================================ */
-function switchAdminTab(tabId, btn) {
-  // Sembunyikan semua tab
-  document.querySelectorAll('.admin-tab').forEach(t => t.classList.add('d-none'));
-  // Hilangkan active semua nav item
-  document.querySelectorAll('.admin-nav-item').forEach(b => b.classList.remove('active'));
-  // Tampilkan tab target
-  const tab = document.getElementById(`admin-tab-${tabId}`);
-  if (tab) tab.classList.remove('d-none');
-  // Set active nav button
-  if (btn) btn.classList.add('active');
-
-  // Load data per tab
-  if (tabId === 'overview')       loadDashboard();
-  if (tabId === 'registrations')  loadAllRegistrations();
-  if (tabId === 'merchandise')    loadMerchAdmin();
-  if (tabId === 'scanner')        initScanner();
-  if (tabId === 'settings')       loadSettings();
-}
-
-/* ============================================================
-   AUTH FLOW
-   ============================================================ */
-async function signIn() {
-  const email    = document.getElementById('login-email').value.trim();
-  const password = document.getElementById('login-password').value;
-
-  if (!email || !password) {
-    showToast('Email dan password harus diisi.', 'error'); return;
-  }
-
-  const result = await callSupabase(
-    supabaseClient.auth.signInWithPassword({ email, password }),
-    'Login berhasil! Selamat datang.'
-  );
-
-  if (result.success) {
-    await loadCurrentProfile(result.data.user.id);
-    navigateTo('dashboard');
-  }
-}
-
-async function signOut() {
-  // Hentikan kamera kalau aktif
-  if (scannerStream) { scannerStream.getTracks().forEach(t => t.stop()); scannerStream = null; }
-  if (qrScanner) { qrScanner.stop().catch(() => {}); qrScanner = null; }
-  if (realtimeChannel) { supabaseClient.removeChannel(realtimeChannel); realtimeChannel = null; }
-  await supabaseClient.auth.signOut();
-  currentProfile = null;
-  navigateTo('login');
-}
-
-async function loadCurrentProfile(userId) {
-  const result = await callSupabase(
-    supabaseClient.from('profiles').select('*').eq('id', userId).single()
-  );
-  if (result.success) {
-    currentProfile = result.data;
-    const nameEl = document.getElementById('admin-user-name');
-    if (nameEl) nameEl.textContent = currentProfile.nama || currentProfile.role || 'Admin';
-  }
-}
-
-function togglePassword(inputId, btn) {
-  const input = document.getElementById(inputId);
-  const isPass = input.type === 'password';
-  input.type = isPass ? 'text' : 'password';
-  btn.innerHTML = `<i class="bi bi-eye${isPass ? '-slash' : ''}"></i>`;
-}
-
-// Pantau status auth Supabase
-supabaseClient.auth.onAuthStateChange((event, session) => {
-  if (session) {
-    loadCurrentProfile(session.user.id);
-    if (document.getElementById('section-login')?.classList.contains('d-none') === false) {
-      navigateTo('dashboard');
-    }
-  }
-});
-
-/* ============================================================
-   LOAD HALAMAN PUBLIK
-   ============================================================ */
-async function loadPublicPage() {
-  await loadAppConfig();
-  await loadMerchCatalog();
-}
-
-async function loadAppConfig() {
-  const result = await callSupabase(
-    supabaseClient.from('app_config').select('*')
-  );
-  if (!result.success) return;
-
-  const config = {};
-  result.data.forEach(row => { config[row.key] = row.value; });
-  currentConfig = config;
-
-  // Terapkan ke UI public
-  if (config.eventDate) {
-    const d = new Date(config.eventDate);
-    const dateStr = d.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-    const el = document.getElementById('hero-date');
-    if (el) el.textContent = dateStr;
-  }
-  const locEl = document.getElementById('hero-location');
-  if (locEl) locEl.textContent = config.eventLocation || '—';
-
-  const priceEl = document.getElementById('hero-price');
-  if (priceEl) priceEl.textContent = Number(config.ticketPrice || 75000).toLocaleString('id-ID');
-
-  const tagEl = document.getElementById('tagline-display');
-  if (tagEl && config.tagline) tagEl.textContent = `"${config.tagline}"`;
-
-  // Terapkan ke payment page
-  const bankNameEl = document.getElementById('bank-name-display');
-  if (bankNameEl) bankNameEl.textContent = config.bankName || '—';
-  const bankAccEl = document.getElementById('bank-account-display');
-  if (bankAccEl) bankAccEl.textContent = config.bankAccount || '—';
-  const bankHoldEl = document.getElementById('bank-holder-display');
-  if (bankHoldEl) bankHoldEl.textContent = config.bankHolder || '—';
-}
-
-/* ============================================================
-   KATALOG MERCHANDISE (PUBLIK)
-   ============================================================ */
-async function loadMerchCatalog() {
-  const result = await callSupabase(
-    supabaseClient.from('merchandise_items').select('*').eq('is_active', true).order('created_at')
-  );
-  if (!result.success) return;
-
-  allMerchandise = result.data;
-  renderMerchCatalog(allMerchandise);
-}
-
-function renderMerchCatalog(items) {
-  const grid = document.getElementById('merch-catalog-grid');
-  if (!grid) return;
-
-  if (!items || items.length === 0) {
-    grid.innerHTML = '<p class="text-muted text-center py-4">Belum ada merchandise tersedia.</p>';
-    return;
-  }
-
-  grid.innerHTML = items.map(item => `
-    <div class="merch-card" id="merch-card-${item.id}">
-      ${item.photo_url
-        ? `<img src="${item.photo_url}" alt="${item.name}" class="merch-photo" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><div class="merch-photo-placeholder" style="display:none"><i class="bi bi-bag-heart"></i><span>${item.name}</span></div>`
-        : `<div class="merch-photo-placeholder"><i class="bi bi-bag-heart"></i><span>${item.name}</span></div>`
-      }
-      <div class="merch-name">${item.name}</div>
-      <div class="merch-desc">${item.description || ''}</div>
-      <div class="merch-price">${formatRupiah(item.price)}</div>
-
-      <div class="merch-select-row">
-        <div>
-          <span class="merch-select-label">Ukuran</span>
-          <select class="form-input-custom" id="size-${item.id}" style="font-size:12px;padding:6px 8px">
-            ${item.available_sizes.map(s => `<option value="${s}">${s}</option>`).join('')}
-          </select>
+      <!-- Header Publik -->
+      <header class="public-header">
+        <div class="container py-3">
+          <div class="d-flex align-items-center justify-content-between">
+            <div class="d-flex align-items-center gap-3">
+              <div class="mkj-logo-badge">MKJ</div>
+              <div>
+                <div class="mkj-brand-name">MOTORAN KARO JASAK</div>
+                <div class="mkj-brand-sub" id="header-event-date">Event Touring Ayah &amp; Anak</div>
+              </div>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <button class="btn-icon-ghost" onclick="toggleDarkMode()" title="Toggle dark mode">
+                <i class="bi bi-circle-half" id="theme-icon"></i>
+              </button>
+              <a href="#" class="btn-admin-link" onclick="navigateTo('login'); return false;">
+                <i class="bi bi-shield-lock-fill me-1"></i>Admin
+              </a>
+            </div>
+          </div>
         </div>
-        <div>
-          <span class="merch-select-label">Warna</span>
-          <select class="form-input-custom" id="color-${item.id}" style="font-size:12px;padding:6px 8px">
-            ${item.available_colors.map(c => `<option value="${c}">${c}</option>`).join('')}
-          </select>
+      </header>
+
+      <!-- Hero Banner -->
+      <div class="public-hero">
+        <div class="container">
+          <div class="hero-content text-center">
+            <div class="hero-badge mb-3">🏍️ EVENT RESMI 2026</div>
+            <h1 class="hero-title">GAS BARENG,<br>KENANGAN BARENG</h1>
+            <p class="hero-sub" id="hero-tagline">Bersama Ayah Tercinta — Event Motoran Spesial Ayah &amp; Anak</p>
+            <div class="hero-meta" id="hero-event-info">
+              <span><i class="bi bi-calendar3"></i> <span id="hero-date">Loading...</span></span>
+              <span><i class="bi bi-geo-alt-fill"></i> <span id="hero-location">Loading...</span></span>
+              <span><i class="bi bi-ticket-fill"></i> Tiket Rp <span id="hero-price">75.000</span></span>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div class="merch-toggle-row">
-        <div class="qty-stepper" id="qty-stepper-${item.id}">
-          <button class="qty-btn" onclick="changeQty('${item.id}', -1)">−</button>
-          <span class="qty-value" id="qty-val-${item.id}">0</span>
-          <button class="qty-btn" onclick="changeQty('${item.id}', +1)">+</button>
+      <!-- Main Form Area -->
+      <div class="container py-4 pb-5">
+        <div class="row justify-content-center">
+          <div class="col-12 col-md-10 col-lg-8 col-xl-7">
+
+            <!-- ---- STEP 1: Data Peserta ---- -->
+            <div class="form-card mb-4">
+              <div class="form-card-header">
+                <div class="step-badge">1</div>
+                <div>
+                  <h2 class="form-card-title">Data Peserta &amp; Tiket</h2>
+                  <p class="form-card-sub">Isi data ayah dan anak yang akan mengikuti touring</p>
+                </div>
+                <div class="ticket-price-badge">Rp 75.000</div>
+              </div>
+              <div class="form-card-body">
+                <div class="row g-3">
+                  <div class="col-12 col-sm-6">
+                    <label class="form-label-custom">Nama Lengkap Ayah *</label>
+                    <input type="text" id="father-name" class="form-input-custom" placeholder="Contoh: Budi Santoso" required />
+                  </div>
+                  <div class="col-12 col-sm-6">
+                    <label class="form-label-custom">Nama Lengkap Anak *</label>
+                    <input type="text" id="child-name" class="form-input-custom" placeholder="Contoh: Arka Pratama" required />
+                  </div>
+                  <div class="col-12 col-sm-6">
+                    <label class="form-label-custom">Usia Anak (Tahun) *</label>
+                    <select id="child-age" class="form-input-custom">
+                      <option value="">Pilih usia...</option>
+                      <option value="3">3 Tahun</option>
+                      <option value="4">4 Tahun</option>
+                      <option value="5">5 Tahun</option>
+                      <option value="6">6 Tahun</option>
+                      <option value="7">7 Tahun</option>
+                      <option value="8">8 Tahun</option>
+                      <option value="9">9 Tahun</option>
+                      <option value="10">10 Tahun</option>
+                      <option value="11">11 Tahun</option>
+                      <option value="12">12 Tahun</option>
+                      <option value="13">13 Tahun</option>
+                      <option value="14">14+ Tahun</option>
+                    </select>
+                  </div>
+                  <div class="col-12 col-sm-6">
+                    <label class="form-label-custom">No. WhatsApp Aktif *</label>
+                    <input type="tel" id="whatsapp-number" class="form-input-custom" placeholder="0812-xxxx-xxxx" required />
+                    <small class="form-hint">Tiket barcode dikirim via WhatsApp</small>
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label-custom">Alamat Domisili Lengkap *</label>
+                    <textarea id="address" class="form-input-custom" rows="2" placeholder="Alamat lengkap untuk koordinasi rute touring..." required></textarea>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ---- STEP 2: Katalog Merchandise ---- -->
+            <div class="form-card mb-4">
+              <div class="form-card-header">
+                <div class="step-badge">2</div>
+                <div>
+                  <h2 class="form-card-title">Merchandise Resmi</h2>
+                  <p class="form-card-sub">Pilih merchandise eksklusif event (opsional)</p>
+                </div>
+              </div>
+              <div class="form-card-body">
+                <div id="merch-catalog-grid" class="merch-grid">
+                  <!-- Diisi oleh JavaScript -->
+                  <div class="text-center py-4 text-muted">
+                    <div class="spinner-border spinner-border-sm me-2"></div>
+                    Memuat katalog merchandise...
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ---- STEP 3: Ringkasan & Tombol Daftar ---- -->
+            <div class="order-summary-card mb-4">
+              <div class="order-summary-header">
+                <span class="order-summary-label">RINGKASAN PESANAN</span>
+              </div>
+              <div class="order-summary-body">
+                <div class="order-line">
+                  <span>Tiket Event</span>
+                  <span>Rp 75.000</span>
+                </div>
+                <div id="merch-summary-lines">
+                  <!-- Diisi JavaScript -->
+                </div>
+                <div class="order-total-line">
+                  <span>TOTAL TAGIHAN</span>
+                  <span id="grand-total-display">Rp 75.000</span>
+                </div>
+              </div>
+              <button id="btn-submit-reg" class="btn-primary-orange w-100" onclick="submitRegistration()">
+                <i class="bi bi-arrow-right-circle-fill me-2"></i>
+                Lanjut ke Pembayaran &amp; Upload Bukti
+              </button>
+            </div>
+
+          </div><!-- /col -->
+        </div><!-- /row -->
+      </div><!-- /container -->
+    </div><!-- /section-public -->
+
+
+    <!-- ======================================================= -->
+    <!-- SECTION: KONFIRMASI PEMBAYARAN & UPLOAD BUKTI           -->
+    <!-- ======================================================= -->
+    <div id="section-payment" class="app-section d-none">
+      <header class="public-header">
+        <div class="container py-3">
+          <div class="d-flex align-items-center gap-3">
+            <button class="btn-back" onclick="navigateTo('public')">
+              <i class="bi bi-arrow-left"></i>
+            </button>
+            <div class="mkj-logo-badge">MKJ</div>
+            <div class="mkj-brand-name">KONFIRMASI PEMBAYARAN</div>
+          </div>
         </div>
-        <label class="toggle-label">
-          <input type="checkbox" class="toggle-checkbox" id="chk-${item.id}"
-            onchange="toggleMerch('${item.id}', ${item.price}, this.checked)" />
-          Pesan
-        </label>
+      </header>
+
+      <div class="container py-4 pb-5">
+        <div class="row justify-content-center">
+          <div class="col-12 col-md-8 col-lg-6">
+
+            <!-- Success Banner -->
+            <div class="success-banner mb-4">
+              <div class="success-icon"><i class="bi bi-check-circle-fill"></i></div>
+              <h2 class="success-title">PENDAFTARAN BERHASIL DICATAT!</h2>
+              <p class="success-sub">Selesaikan pembayaran untuk mengaktifkan tiket Anda</p>
+            </div>
+
+            <!-- Info Tiket -->
+            <div class="ticket-info-card mb-4">
+              <div class="ticket-info-header">
+                <span>DETAIL PENDAFTARAN</span>
+                <span id="pay-ticket-code" class="ticket-code-badge">MKJ-2026-XXXX</span>
+              </div>
+              <div class="ticket-info-body">
+                <div class="info-row"><span>Nama Ayah</span><strong id="pay-father-name">—</strong></div>
+                <div class="info-row"><span>Nama Anak</span><strong id="pay-child-name">—</strong></div>
+                <div class="info-row"><span>Tiket Event</span><strong>Rp 75.000</strong></div>
+                <div id="pay-merch-lines"></div>
+                <div class="info-row total"><span>TOTAL BAYAR</span><strong id="pay-grand-total" class="total-amount">Rp 75.000</strong></div>
+              </div>
+            </div>
+
+            <!-- Instruksi Transfer -->
+            <div class="bank-transfer-card mb-4">
+              <div class="bank-card-header">
+                <i class="bi bi-bank2 me-2"></i>INSTRUKSI TRANSFER BANK
+              </div>
+              <div class="bank-card-body">
+                <div class="bank-info-grid">
+                  <div class="bank-info-item">
+                    <span class="bank-label">BANK</span>
+                    <span class="bank-value" id="bank-name-display">BCA</span>
+                  </div>
+                  <div class="bank-info-item">
+                    <span class="bank-label">NO. REKENING</span>
+                    <div class="bank-account-wrap">
+                      <span class="bank-account" id="bank-account-display">1234567890</span>
+                      <button class="btn-copy" onclick="copyToClipboard('bank-account-display')" title="Salin nomor rekening">
+                        <i class="bi bi-copy"></i>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="bank-info-item">
+                    <span class="bank-label">ATAS NAMA</span>
+                    <span class="bank-value" id="bank-holder-display">—</span>
+                  </div>
+                  <div class="bank-info-item">
+                    <span class="bank-label">NOMINAL</span>
+                    <div class="bank-account-wrap">
+                      <span class="bank-account accent-orange" id="pay-amount-display">Rp 75.000</span>
+                      <button class="btn-copy" onclick="copyAmountToClipboard()" title="Salin nominal">
+                        <i class="bi bi-copy"></i>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div class="bank-note">
+                  <i class="bi bi-info-circle me-1"></i>
+                  Transfer sesuai nominal tepat agar verifikasi lebih cepat
+                </div>
+              </div>
+            </div>
+
+            <!-- Upload Bukti Bayar -->
+            <div class="form-card mb-4">
+              <div class="form-card-header">
+                <div class="step-badge">3</div>
+                <div>
+                  <h2 class="form-card-title">Upload Bukti Transfer</h2>
+                  <p class="form-card-sub">JPG/PNG/PDF, maks 5MB</p>
+                </div>
+              </div>
+              <div class="form-card-body">
+                <div id="upload-drop-zone" class="upload-drop-zone" onclick="document.getElementById('receipt-file').click()">
+                  <i class="bi bi-cloud-upload upload-icon"></i>
+                  <p class="upload-title">Klik atau drag &amp; drop file bukti transfer</p>
+                  <p class="upload-sub">Format: JPG, PNG, atau PDF • Maks 5MB</p>
+                  <input type="file" id="receipt-file" accept="image/*,.pdf" class="d-none" onchange="handleFileSelect(this)" />
+                </div>
+                <div id="file-preview-wrap" class="d-none mt-3">
+                  <div class="file-preview-item">
+                    <i class="bi bi-file-check-fill text-success me-2"></i>
+                    <span id="file-preview-name">—</span>
+                    <button class="btn-remove-file ms-auto" onclick="removeFile()">
+                      <i class="bi bi-x-circle-fill"></i>
+                    </button>
+                  </div>
+                </div>
+                <button id="btn-upload-receipt" class="btn-primary-orange w-100 mt-3" onclick="uploadReceipt()" disabled>
+                  <i class="bi bi-cloud-upload-fill me-2"></i>
+                  Kirim Bukti Pembayaran
+                </button>
+              </div>
+            </div>
+
+            <!-- Tagline -->
+            <div class="tagline-banner text-center mb-4">
+              <p class="tagline-text" id="tagline-display">"MOTORAN KARO JASAK — Gas Bareng, Kenangan Bareng, Bersama Ayah Tercinta."</p>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div><!-- /section-payment -->
+
+
+    <!-- ======================================================= -->
+    <!-- SECTION: STATUS PENDAFTARAN                             -->
+    <!-- ======================================================= -->
+    <div id="section-status" class="app-section d-none">
+      <header class="public-header">
+        <div class="container py-3">
+          <div class="d-flex align-items-center gap-3">
+            <button class="btn-back" onclick="navigateTo('public')">
+              <i class="bi bi-arrow-left"></i>
+            </button>
+            <div class="mkj-logo-badge">MKJ</div>
+            <div class="mkj-brand-name">STATUS PENDAFTARAN</div>
+          </div>
+        </div>
+      </header>
+
+      <div class="container py-4">
+        <div class="row justify-content-center">
+          <div class="col-12 col-md-7 col-lg-5">
+
+            <!-- Status Card -->
+            <div class="status-card mb-4" id="status-result-card">
+              <div class="status-icon-wrap" id="status-icon-area">
+                <i class="bi bi-hourglass-split status-icon pending" id="status-main-icon"></i>
+              </div>
+              <h2 class="status-title" id="status-title-text">PENDAFTARAN DALAM PROSES</h2>
+              <p class="status-subtitle" id="status-subtitle-text">Tim kami sedang memverifikasi bukti pembayaran Anda</p>
+
+              <div class="status-details" id="status-details-area">
+                <div class="info-row"><span>Kode Tiket</span><strong id="st-ticket-code">—</strong></div>
+                <div class="info-row"><span>Nama Ayah</span><strong id="st-father-name">—</strong></div>
+                <div class="info-row"><span>Nama Anak</span><strong id="st-child-name">—</strong></div>
+                <div class="info-row"><span>Total Tagihan</span><strong id="st-grand-total">—</strong></div>
+                <div class="info-row"><span>Status Bayar</span><strong id="st-payment-status">—</strong></div>
+                <div class="info-row"><span>Status Check-in</span><strong id="st-checkin-status">—</strong></div>
+              </div>
+            </div>
+
+            <!-- Tombol Tiket Digital -->
+            <div id="btn-ticket-wrap" class="d-none mb-3">
+              <button class="btn-primary-orange w-100" onclick="openTicketPage()">
+                <i class="bi bi-ticket-perforated-fill me-2"></i>
+                Lihat &amp; Download Tiket Digital
+              </button>
+            </div>
+
+            <!-- Cek Status Form -->
+            <div class="form-card">
+              <div class="form-card-header">
+                <div class="step-badge"><i class="bi bi-search"></i></div>
+                <div>
+                  <h2 class="form-card-title">Cek Status Tiket</h2>
+                  <p class="form-card-sub">Masukkan kode tiket Anda</p>
+                </div>
+              </div>
+              <div class="form-card-body">
+                <div class="input-group-custom">
+                  <input type="text" id="check-ticket-code" class="form-input-custom" placeholder="Contoh: MKJ-2026-0001" />
+                  <button class="btn-primary-orange" onclick="checkTicketStatus()">
+                    <i class="bi bi-search me-1"></i>Cek
+                  </button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div><!-- /section-status -->
+
+
+    <!-- ======================================================= -->
+    <!-- SECTION: TIKET DIGITAL                                  -->
+    <!-- ======================================================= -->
+    <div id="section-ticket" class="app-section d-none">
+      <header class="public-header">
+        <div class="container py-3">
+          <div class="d-flex align-items-center justify-content-between">
+            <div class="d-flex align-items-center gap-3">
+              <button class="btn-back" onclick="navigateTo('status')">
+                <i class="bi bi-arrow-left"></i>
+              </button>
+              <div class="mkj-logo-badge">MKJ</div>
+              <div class="mkj-brand-name">TIKET DIGITAL</div>
+            </div>
+            <div class="d-flex gap-2">
+              <button class="btn-primary-orange" onclick="downloadTicket()">
+                <i class="bi bi-download me-2"></i>Download PNG
+              </button>
+              <button class="btn-sm-outline" onclick="shareTicket()">
+                <i class="bi bi-share me-1"></i>Bagikan
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div class="container py-4 pb-5">
+        <div class="row justify-content-center">
+          <div class="col-12 col-md-8 col-lg-6">
+
+            <!-- INFO: Status Tiket -->
+            <div id="ticket-status-notice" class="ticket-notice mb-3 d-none">
+              <i class="bi bi-info-circle-fill me-2"></i>
+              <span id="ticket-notice-text"></span>
+            </div>
+
+            <!-- TIKET DIGITAL — area yang akan di-screenshot -->
+            <div id="ticket-card" class="ticket-card">
+
+              <!-- Header Tiket -->
+              <div class="ticket-header">
+                <div class="ticket-header-left">
+                  <div class="ticket-logo">MKJ</div>
+                  <div>
+                    <div class="ticket-event-name">MOTORAN KARO JASAK</div>
+                    <div class="ticket-event-sub">Event Touring Ayah &amp; Anak</div>
+                  </div>
+                </div>
+                <div class="ticket-year">2026</div>
+              </div>
+
+              <!-- Body Tiket -->
+              <div class="ticket-body">
+                <!-- Info Peserta -->
+                <div class="ticket-info-section">
+                  <div class="ticket-field">
+                    <span class="ticket-field-label">NAMA AYAH</span>
+                    <span class="ticket-field-value" id="tkt-father-name">—</span>
+                  </div>
+                  <div class="ticket-field">
+                    <span class="ticket-field-label">NAMA ANAK</span>
+                    <span class="ticket-field-value" id="tkt-child-name">—</span>
+                  </div>
+                  <div class="ticket-field-row">
+                    <div class="ticket-field">
+                      <span class="ticket-field-label">USIA ANAK</span>
+                      <span class="ticket-field-value" id="tkt-child-age">—</span>
+                    </div>
+                    <div class="ticket-field">
+                      <span class="ticket-field-label">TANGGAL EVENT</span>
+                      <span class="ticket-field-value" id="tkt-event-date">—</span>
+                    </div>
+                  </div>
+                  <div class="ticket-field">
+                    <span class="ticket-field-label">LOKASI</span>
+                    <span class="ticket-field-value" id="tkt-event-location">—</span>
+                  </div>
+                </div>
+
+                <!-- Divider Sobek -->
+                <div class="ticket-tear-divider">
+                  <div class="tear-circle left"></div>
+                  <div class="tear-line"></div>
+                  <div class="tear-circle right"></div>
+                </div>
+
+                <!-- Kode & QR Section -->
+                <div class="ticket-code-section">
+                  <div class="ticket-code-left">
+                    <!-- QR Code -->
+                    <div class="ticket-qr-wrap">
+                      <div id="ticket-qr-code"></div>
+                    </div>
+                    <div class="ticket-qr-label">Scan untuk verifikasi</div>
+                  </div>
+                  <div class="ticket-code-right">
+                    <div class="ticket-code-label">KODE TIKET</div>
+                    <div class="ticket-code-value" id="tkt-ticket-code">MKJ-2026-XXXX</div>
+                    <!-- Barcode -->
+                    <div class="ticket-barcode-wrap">
+                      <svg id="ticket-barcode"></svg>
+                    </div>
+                    <div class="ticket-status-badge" id="tkt-status-badge">
+                      <span id="tkt-status-text">PENDING</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Footer Tiket -->
+              <div class="ticket-footer">
+                <span id="tkt-tagline">Gas Bareng, Kenangan Bareng, Bersama Ayah Tercinta.</span>
+                <span class="ticket-footer-url">mkj-chi.vercel.app</span>
+              </div>
+
+            </div><!-- /ticket-card -->
+
+            <!-- Cek Tiket Lain -->
+            <div class="form-card mt-4">
+              <div class="form-card-header">
+                <div class="step-badge"><i class="bi bi-search"></i></div>
+                <div>
+                  <h2 class="form-card-title">Cek Tiket Lain</h2>
+                  <p class="form-card-sub">Masukkan kode tiket untuk melihat tiket digital</p>
+                </div>
+              </div>
+              <div class="form-card-body">
+                <div class="input-group-custom">
+                  <input type="text" id="ticket-check-input" class="form-input-custom text-uppercase"
+                    placeholder="Contoh: MKJ-2026-0001"
+                    onkeydown="if(event.key==='Enter') loadTicketByCode(this.value)" />
+                  <button class="btn-primary-orange" onclick="loadTicketByCode(document.getElementById('ticket-check-input').value)">
+                    <i class="bi bi-ticket-fill me-1"></i>Tampilkan
+                  </button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div><!-- /section-ticket -->
+
+
+    <!-- ======================================================= -->
+    <!-- SECTION: LOGIN ADMIN                                    -->
+    <!-- ======================================================= -->
+    <div id="section-login" class="app-section d-none">
+      <div class="login-page">
+        <div class="login-card">
+          <div class="login-logo">
+            <div class="mkj-logo-badge lg">MKJ</div>
+          </div>
+          <h2 class="login-title">ADMIN PORTAL</h2>
+          <p class="login-sub">Motoran Karo Jasak — Event Management</p>
+
+          <div class="mb-3">
+            <label class="form-label-custom">Email Admin</label>
+            <input type="email" id="login-email" class="form-input-custom" placeholder="admin@mkj.id" />
+          </div>
+          <div class="mb-4">
+            <label class="form-label-custom">Password</label>
+            <div class="password-wrap">
+              <input type="password" id="login-password" class="form-input-custom" placeholder="Password" onkeydown="if(event.key==='Enter')signIn()" />
+              <button class="btn-toggle-pass" onclick="togglePassword('login-password', this)">
+                <i class="bi bi-eye"></i>
+              </button>
+            </div>
+          </div>
+          <button class="btn-primary-orange w-100" onclick="signIn()">
+            <i class="bi bi-shield-lock-fill me-2"></i>Masuk ke Dashboard Admin
+          </button>
+          <div class="login-back mt-3 text-center">
+            <a href="#" onclick="navigateTo('public'); return false;" class="text-muted small">
+              ← Kembali ke halaman pendaftaran
+            </a>
+          </div>
+        </div>
+      </div>
+    </div><!-- /section-login -->
+
+
+    <!-- ======================================================= -->
+    <!-- SECTION: DASHBOARD ADMIN                                -->
+    <!-- ======================================================= -->
+    <div id="section-dashboard" class="app-section d-none">
+
+      <!-- Admin Navbar -->
+      <nav class="admin-navbar">
+        <div class="admin-nav-brand">
+          <div class="mkj-logo-badge sm">MKJ</div>
+          <span class="admin-nav-title">Admin Panel</span>
+        </div>
+        <div class="admin-nav-menu">
+          <button class="admin-nav-item active" data-section="overview" onclick="switchAdminTab('overview', this)">
+            <i class="bi bi-speedometer2"></i>
+            <span>Dashboard</span>
+          </button>
+          <button class="admin-nav-item" data-section="registrations" onclick="switchAdminTab('registrations', this)">
+            <i class="bi bi-people-fill"></i>
+            <span>Peserta</span>
+          </button>
+          <button class="admin-nav-item" data-section="merchandise" onclick="switchAdminTab('merchandise', this)">
+            <i class="bi bi-bag-fill"></i>
+            <span>Merch</span>
+          </button>
+          <button class="admin-nav-item" data-section="scanner" onclick="switchAdminTab('scanner', this)">
+            <i class="bi bi-qr-code-scan"></i>
+            <span>Scan QR</span>
+          </button>
+          <button class="admin-nav-item" data-section="settings" onclick="switchAdminTab('settings', this)">
+            <i class="bi bi-gear-fill"></i>
+            <span>Pengaturan</span>
+          </button>
+        </div>
+        <div class="admin-nav-actions">
+          <button class="btn-icon-ghost" onclick="toggleDarkMode()" title="Toggle tema">
+            <i class="bi bi-circle-half"></i>
+          </button>
+          <span class="admin-user-badge" id="admin-user-name">Admin</span>
+          <button class="btn-logout" onclick="signOut()">
+            <i class="bi bi-box-arrow-right"></i>
+          </button>
+        </div>
+      </nav>
+
+      <!-- Admin Content Area -->
+      <div class="admin-content">
+
+        <!-- ---- TAB: OVERVIEW DASHBOARD ---- -->
+        <div id="admin-tab-overview" class="admin-tab active">
+          <div class="admin-page-header">
+            <h1 class="admin-page-title">Dashboard Realtime</h1>
+            <div class="admin-header-actions">
+              <div class="realtime-dot"><span class="dot-pulse"></span>Live</div>
+              <button class="btn-sm-outline" onclick="loadDashboard()">
+                <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+              </button>
+            </div>
+          </div>
+
+          <!-- KPI Cards -->
+          <div class="kpi-grid mb-4">
+            <div class="kpi-card">
+              <div class="kpi-icon orange"><i class="bi bi-people-fill"></i></div>
+              <div>
+                <div class="kpi-value" id="kpi-total">0</div>
+                <div class="kpi-label">Total Pendaftar</div>
+              </div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-icon green"><i class="bi bi-cash-coin"></i></div>
+              <div>
+                <div class="kpi-value" id="kpi-revenue">Rp 0</div>
+                <div class="kpi-label">Uang Masuk Terverifikasi</div>
+              </div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-icon blue"><i class="bi bi-hourglass-split"></i></div>
+              <div>
+                <div class="kpi-value" id="kpi-pending">0</div>
+                <div class="kpi-label">Menunggu Verifikasi</div>
+              </div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-icon yellow"><i class="bi bi-qr-code-scan"></i></div>
+              <div>
+                <div class="kpi-value" id="kpi-checkin">0 / 0</div>
+                <div class="kpi-label">Check-in vs Belum</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Charts Row -->
+          <div class="row g-3 mb-4">
+            <div class="col-12 col-md-7">
+              <div class="chart-card">
+                <div class="chart-card-header">
+                  <span>Status Pembayaran</span>
+                </div>
+                <div class="chart-body">
+                  <canvas id="chart-payment-status" height="200"></canvas>
+                </div>
+              </div>
+            </div>
+            <div class="col-12 col-md-5">
+              <div class="chart-card">
+                <div class="chart-card-header">
+                  <span>Pendaftaran per Hari</span>
+                </div>
+                <div class="chart-body">
+                  <canvas id="chart-daily-reg" height="200"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- AI Insight -->
+          <div class="ai-insight-card mb-4">
+            <div class="ai-insight-header">
+              <i class="bi bi-lightbulb-fill me-2 text-warning"></i>
+              <span>Ringkasan AI</span>
+            </div>
+            <p class="ai-insight-text" id="ai-insight-text">Memuat analisis data...</p>
+          </div>
+
+          <!-- Tabel Pendaftaran Terbaru -->
+          <div class="data-table-card">
+            <div class="data-table-header">
+              <span>Pendaftaran Terbaru</span>
+              <button class="btn-sm-outline" onclick="switchAdminTab('registrations', document.querySelector('[data-section=registrations]'))">
+                Lihat Semua <i class="bi bi-arrow-right ms-1"></i>
+              </button>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table" id="recent-reg-table">
+                <thead>
+                  <tr>
+                    <th>Kode Tiket</th>
+                    <th>Nama Ayah</th>
+                    <th>Nama Anak</th>
+                    <th>Total</th>
+                    <th>Status</th>
+                    <th>Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="recent-reg-tbody">
+                  <tr><td colspan="6" class="text-center text-muted py-3">Memuat data...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ---- TAB: DAFTAR PESERTA ---- -->
+        <div id="admin-tab-registrations" class="admin-tab d-none">
+          <div class="admin-page-header">
+            <h1 class="admin-page-title">Data Peserta</h1>
+            <div class="admin-header-actions">
+              <div class="search-box">
+                <i class="bi bi-search"></i>
+                <input type="text" id="search-reg" placeholder="Cari nama, kode tiket..." oninput="filterRegistrations(this.value)" />
+              </div>
+              <select id="filter-status" class="filter-select" onchange="filterRegistrations(document.getElementById('search-reg').value)">
+                <option value="">Semua Status</option>
+                <option value="pending">Pending</option>
+                <option value="verified">Verified</option>
+                <option value="rejected">Rejected</option>
+              </select>
+              <button class="btn-sm-outline" onclick="exportCSV()">
+                <i class="bi bi-download me-1"></i>Export CSV
+              </button>
+              <button class="btn-sm-outline" onclick="openAdminTicketModal()">
+                <i class="bi bi-ticket-perforated-fill me-1"></i>Cetak Tiket
+              </button>
+            </div>
+          </div>
+          <div class="data-table-card">
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Kode Tiket</th>
+                    <th>Nama Ayah</th>
+                    <th>Nama Anak</th>
+                    <th>Usia</th>
+                    <th>WhatsApp</th>
+                    <th>Total Bayar</th>
+                    <th>Status</th>
+                    <th>Check-in</th>
+                    <th>Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="all-reg-tbody">
+                  <tr><td colspan="9" class="text-center text-muted py-3">Memuat data...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ---- TAB: MASTER MERCHANDISE ---- -->
+        <div id="admin-tab-merchandise" class="admin-tab d-none">
+          <div class="admin-page-header">
+            <h1 class="admin-page-title">Master Merchandise</h1>
+            <button class="btn-primary-orange" onclick="openMerchModal()">
+              <i class="bi bi-plus-lg me-1"></i>Tambah Item
+            </button>
+          </div>
+          <div class="data-table-card">
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Nama Item</th>
+                    <th>Harga</th>
+                    <th>Ukuran Tersedia</th>
+                    <th>Warna Tersedia</th>
+                    <th>Status</th>
+                    <th>Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="merch-admin-tbody">
+                  <tr><td colspan="6" class="text-center text-muted py-3">Memuat data...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- ---- TAB: SCANNER QR ---- -->
+        <div id="admin-tab-scanner" class="admin-tab d-none">
+          <div class="admin-page-header">
+            <h1 class="admin-page-title">Scanner Check-in</h1>
+          </div>
+          <div class="row justify-content-center">
+            <div class="col-12 col-md-8 col-lg-5">
+              <div class="scanner-card mb-4">
+                <div class="scanner-viewport" id="scanner-viewport">
+                  <video id="scanner-video" class="scanner-video" autoplay muted playsinline></video>
+                  <div class="scanner-overlay">
+                    <div class="scanner-frame">
+                      <div class="scan-corner tl"></div>
+                      <div class="scan-corner tr"></div>
+                      <div class="scan-corner bl"></div>
+                      <div class="scan-corner br"></div>
+                      <div class="scan-line" id="scan-line"></div>
+                    </div>
+                  </div>
+                  <div class="scanner-placeholder" id="scanner-placeholder">
+                    <i class="bi bi-camera-video-off text-muted" style="font-size:3rem"></i>
+                    <p class="text-muted mt-2">Kamera belum aktif</p>
+                  </div>
+                </div>
+                <div class="scanner-controls">
+                  <button class="btn-primary-orange w-100" id="btn-start-scan" onclick="startScanner()">
+                    <i class="bi bi-camera-fill me-2"></i>Aktifkan Kamera &amp; Scan
+                  </button>
+                  <button class="btn-sm-outline w-100 mt-2 d-none" id="btn-stop-scan" onclick="stopScanner()">
+                    <i class="bi bi-stop-circle me-1"></i>Hentikan Scanner
+                  </button>
+                </div>
+              </div>
+
+              <!-- Manual Input -->
+              <div class="form-card mb-4">
+                <div class="form-card-header">
+                  <div class="step-badge"><i class="bi bi-keyboard"></i></div>
+                  <div>
+                    <h2 class="form-card-title">Input Manual</h2>
+                    <p class="form-card-sub">Masukkan kode tiket secara manual</p>
+                  </div>
+                </div>
+                <div class="form-card-body">
+                  <div class="input-group-custom">
+                    <input type="text" id="manual-ticket-code" class="form-input-custom text-uppercase"
+                      placeholder="MKJ-2026-XXXX" onkeydown="if(event.key==='Enter')processCheckin(this.value)" />
+                    <button class="btn-primary-orange" onclick="processCheckin(document.getElementById('manual-ticket-code').value)">
+                      <i class="bi bi-check-lg me-1"></i>Check-in
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Hasil Scan -->
+              <div id="scan-result-area" class="d-none">
+                <div class="scan-result-card" id="scan-result-card">
+                  <div class="scan-result-icon" id="scan-result-icon"></div>
+                  <div class="scan-result-message" id="scan-result-message"></div>
+                  <div class="scan-result-detail" id="scan-result-detail"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ---- TAB: PENGATURAN ---- -->
+        <div id="admin-tab-settings" class="admin-tab d-none">
+          <div class="admin-page-header">
+            <h1 class="admin-page-title">Pengaturan Aplikasi</h1>
+          </div>
+          <div class="row">
+            <div class="col-12 col-lg-8">
+              <div class="form-card mb-4">
+                <div class="form-card-header">
+                  <div class="step-badge"><i class="bi bi-gear-fill"></i></div>
+                  <div>
+                    <h2 class="form-card-title">Informasi Event</h2>
+                    <p class="form-card-sub">Konfigurasi detail event dan rekening bank</p>
+                  </div>
+                </div>
+                <div class="form-card-body">
+                  <div class="row g-3">
+                    <div class="col-12">
+                      <label class="form-label-custom">Nama Aplikasi</label>
+                      <input type="text" id="cfg-appName" class="form-input-custom" />
+                    </div>
+                    <div class="col-12 col-sm-6">
+                      <label class="form-label-custom">Tanggal Event</label>
+                      <input type="date" id="cfg-eventDate" class="form-input-custom" />
+                    </div>
+                    <div class="col-12 col-sm-6">
+                      <label class="form-label-custom">Lokasi Event</label>
+                      <input type="text" id="cfg-eventLocation" class="form-input-custom" />
+                    </div>
+                    <div class="col-12 col-sm-6">
+                      <label class="form-label-custom">Harga Tiket (Rp)</label>
+                      <input type="number" id="cfg-ticketPrice" class="form-input-custom" />
+                    </div>
+                    <div class="col-12 col-sm-6">
+                      <label class="form-label-custom">WhatsApp Admin</label>
+                      <input type="text" id="cfg-whatsappAdmin" class="form-input-custom" placeholder="628xxx" />
+                    </div>
+                    <div class="col-12 col-sm-6">
+                      <label class="form-label-custom">Nama Bank</label>
+                      <input type="text" id="cfg-bankName" class="form-input-custom" />
+                    </div>
+                    <div class="col-12 col-sm-6">
+                      <label class="form-label-custom">No. Rekening</label>
+                      <input type="text" id="cfg-bankAccount" class="form-input-custom" />
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label-custom">Nama Pemegang Rekening</label>
+                      <input type="text" id="cfg-bankHolder" class="form-input-custom" />
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label-custom">Tagline Event</label>
+                      <input type="text" id="cfg-tagline" class="form-input-custom" />
+                    </div>
+                  </div>
+                  <button class="btn-primary-orange mt-4" onclick="saveSettings()">
+                    <i class="bi bi-floppy-fill me-2"></i>Simpan Pengaturan
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /admin-content -->
+    </div><!-- /section-dashboard -->
+
+  </div><!-- /app -->
+
+
+  <!-- ============================================================ -->
+  <!-- MODAL: VERIFIKASI BUKTI BAYAR                               -->
+  <!-- ============================================================ -->
+  <div class="modal-overlay d-none" id="modal-verify">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 class="modal-title" id="modal-verify-title">Detail Pendaftaran</h3>
+        <button class="modal-close" onclick="closeModal('modal-verify')"><i class="bi bi-x-lg"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-12 col-md-6">
+            <div class="proof-preview-wrap" id="proof-preview-area">
+              <div class="proof-placeholder">
+                <i class="bi bi-image text-muted" style="font-size:3rem"></i>
+                <p class="text-muted mt-2 small">Tidak ada bukti bayar</p>
+              </div>
+            </div>
+          </div>
+          <div class="col-12 col-md-6">
+            <div class="verify-info-list" id="verify-info-list">
+              <!-- Diisi JavaScript -->
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-danger" id="btn-reject" onclick="updatePaymentStatus('rejected')">
+          <i class="bi bi-x-circle-fill me-1"></i>Tolak
+        </button>
+        <button class="btn-success" id="btn-verify" onclick="updatePaymentStatus('verified')">
+          <i class="bi bi-check-circle-fill me-1"></i>Verifikasi
+        </button>
       </div>
     </div>
-  `).join('');
-}
-
-function changeQty(itemId, delta) {
-  const current = parseInt(document.getElementById(`qty-val-${itemId}`).textContent) || 0;
-  const newQty = Math.max(0, current + delta);
-  document.getElementById(`qty-val-${itemId}`).textContent = newQty;
-
-  const isSelected = selectedMerch[itemId] !== undefined;
-  if (isSelected) {
-    if (newQty === 0) {
-      document.getElementById(`chk-${itemId}`).checked = false;
-      toggleMerch(itemId, null, false);
-    } else {
-      selectedMerch[itemId].qty = newQty;
-      updateOrderSummary();
-    }
-  }
-}
-
-function toggleMerch(itemId, price, isChecked) {
-  const card = document.getElementById(`merch-card-${itemId}`);
-  const item = allMerchandise.find(m => m.id === itemId);
-  if (!item) return;
-
-  if (isChecked) {
-    const qty = Math.max(1, parseInt(document.getElementById(`qty-val-${itemId}`).textContent) || 1);
-    const size  = document.getElementById(`size-${itemId}`)?.value;
-    const color = document.getElementById(`color-${itemId}`)?.value;
-    document.getElementById(`qty-val-${itemId}`).textContent = qty;
-    selectedMerch[itemId] = { qty, size, color, price: item.price, name: item.name };
-    card?.classList.add('selected');
-  } else {
-    delete selectedMerch[itemId];
-    document.getElementById(`qty-val-${itemId}`).textContent = '0';
-    card?.classList.remove('selected');
-  }
-  updateOrderSummary();
-}
-
-function updateOrderSummary() {
-  const ticketPrice = parseInt(currentConfig.ticketPrice || 75000);
-  let merchTotal = 0;
-  const lines = [];
-
-  Object.entries(selectedMerch).forEach(([id, data]) => {
-    const subtotal = data.qty * data.price;
-    merchTotal += subtotal;
-    lines.push(`<div class="order-line"><span>${data.qty}× ${data.name} (${data.size}, ${data.color})</span><span>${formatRupiah(subtotal)}</span></div>`);
-  });
-
-  currentGrandTotal = ticketPrice + merchTotal;
-
-  document.getElementById('merch-summary-lines').innerHTML = lines.join('');
-  document.getElementById('grand-total-display').textContent = formatRupiah(currentGrandTotal);
-}
-
-/* ============================================================
-   SUBMIT REGISTRASI
-   ============================================================ */
-async function submitRegistration() {
-  // Validasi input
-  const fatherName = document.getElementById('father-name').value.trim();
-  const childName  = document.getElementById('child-name').value.trim();
-  const childAge   = document.getElementById('child-age').value;
-  const waNumber   = document.getElementById('whatsapp-number').value.trim();
-  const address    = document.getElementById('address').value.trim();
-
-  if (!fatherName || !childName || !childAge || !waNumber || !address) {
-    showToast('Harap isi semua data yang wajib diisi (*).', 'error'); return;
-  }
-
-  const ticketCode  = generateTicketCode();
-  const ticketPrice = parseInt(currentConfig.ticketPrice || 75000);
-  let   merchTotal  = 0;
-  Object.values(selectedMerch).forEach(d => { merchTotal += d.qty * d.price; });
-  const grandTotal = ticketPrice + merchTotal;
-
-  // Insert ke tabel registrations
-  const regResult = await callSupabase(
-    supabaseClient.from('registrations').insert({
-      ticket_code:    ticketCode,
-      father_name:    fatherName,
-      child_name:     childName,
-      child_age:      parseInt(childAge),
-      whatsapp_number: waNumber,
-      address:        address,
-      ticket_price:   ticketPrice,
-      merch_total:    merchTotal,
-      grand_total:    grandTotal,
-      payment_status: 'pending'
-    }).select().single(),
-    null
-  );
-
-  if (!regResult.success) return;
-  const reg = regResult.data;
-  currentRegId      = reg.id;
-  currentTicketCode = reg.ticket_code;
-
-  // Insert item merchandise jika ada
-  const merchItems = Object.entries(selectedMerch).map(([id, data]) => ({
-    registration_id: reg.id,
-    merchandise_id:  id,
-    item_name:       data.name,
-    size:            data.size,
-    color:           data.color,
-    quantity:        data.qty,
-    price_per_item:  data.price,
-    subtotal:        data.qty * data.price
-  }));
-
-  if (merchItems.length > 0) {
-    await callSupabase(
-      supabaseClient.from('registration_merchandise').insert(merchItems),
-      null
-    );
-  }
-
-  // Pindah ke halaman pembayaran
-  populatePaymentPage(reg, grandTotal, fatherName, childName);
-  navigateTo('payment');
-  showToast('Pendaftaran berhasil! Silakan selesaikan pembayaran.', 'success');
-}
-
-function populatePaymentPage(reg, grandTotal, fatherName, childName) {
-  const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-
-  setEl('pay-ticket-code', reg.ticket_code);
-  setEl('pay-father-name', reg.father_name || fatherName);
-  setEl('pay-child-name',  reg.child_name  || childName);
-  setEl('pay-grand-total', formatRupiah(grandTotal));
-  setEl('pay-amount-display', formatRupiah(grandTotal));
-
-  // Refresh bank info dari config
-  const bankNameEl = document.getElementById('bank-name-display');
-  if (bankNameEl) bankNameEl.textContent = currentConfig.bankName || '—';
-  const bankAccEl  = document.getElementById('bank-account-display');
-  if (bankAccEl)  bankAccEl.textContent = currentConfig.bankAccount || '—';
-  const bankHoldEl = document.getElementById('bank-holder-display');
-  if (bankHoldEl) bankHoldEl.textContent = currentConfig.bankHolder || '—';
-
-  // Merchandise lines di payment page
-  const linesEl = document.getElementById('pay-merch-lines');
-  if (linesEl) {
-    linesEl.innerHTML = Object.entries(selectedMerch).map(([id, data]) =>
-      `<div class="info-row"><span>${data.qty}× ${data.name}</span><strong>${formatRupiah(data.qty * data.price)}</strong></div>`
-    ).join('');
-  }
-}
-
-/* ============================================================
-   UPLOAD BUKTI BAYAR
-   ============================================================ */
-function handleFileSelect(input) {
-  const file = input.files[0];
-  if (!file) return;
-
-  if (file.size > 5 * 1024 * 1024) {
-    showToast('Ukuran file melebihi 5MB. Pilih file yang lebih kecil.', 'error');
-    input.value = ''; return;
-  }
-
-  selectedFile = file;
-  document.getElementById('file-preview-name').textContent = file.name;
-  document.getElementById('file-preview-wrap').classList.remove('d-none');
-  document.getElementById('btn-upload-receipt').disabled = false;
-}
-
-function removeFile() {
-  selectedFile = null;
-  document.getElementById('receipt-file').value = '';
-  document.getElementById('file-preview-wrap').classList.add('d-none');
-  document.getElementById('btn-upload-receipt').disabled = true;
-}
-
-async function uploadReceipt() {
-  if (!selectedFile || !currentRegId) {
-    showToast('Pilih file bukti pembayaran terlebih dahulu.', 'error'); return;
-  }
-
-  const ext  = selectedFile.name.split('.').pop();
-  const path = `receipts/${currentRegId}_${Date.now()}.${ext}`;
-
-  showLoading();
-  try {
-    const { data: uploadData, error: uploadErr } = await supabaseClient.storage
-      .from('payment-receipts').upload(path, selectedFile);
-    if (uploadErr) throw uploadErr;
-
-    const { data: urlData } = supabaseClient.storage.from('payment-receipts').getPublicUrl(path);
-    const publicUrl = urlData.publicUrl;
-
-    // Update registrasi dengan URL bukti bayar
-    const { error: updateErr } = await supabaseClient.from('registrations')
-      .update({ payment_receipt_url: publicUrl })
-      .eq('id', currentRegId);
-    if (updateErr) throw updateErr;
-
-    showToast('Bukti pembayaran berhasil dikirim! Tim kami akan segera memverifikasi.', 'success');
-
-    // Arahkan ke halaman status
-    setTimeout(() => {
-      navigateTo('status');
-      checkTicketStatus(currentTicketCode);
-    }, 1500);
-  } catch (err) {
-    showToast(err.message || 'Gagal upload. Coba lagi.', 'error');
-  } finally {
-    hideLoading();
-  }
-}
-
-/* Drag-and-drop handler */
-const dropZone = document.getElementById('upload-drop-zone');
-if (dropZone) {
-  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.style.borderColor = 'var(--accent-orange-h)'; });
-  dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor = 'var(--accent-orange)'; });
-  dropZone.addEventListener('drop', e => {
-    e.preventDefault();
-    dropZone.style.borderColor = 'var(--accent-orange)';
-    const file = e.dataTransfer.files[0];
-    if (file) {
-      const inp = document.getElementById('receipt-file');
-      const dt = new DataTransfer(); dt.items.add(file);
-      inp.files = dt.files;
-      handleFileSelect(inp);
-    }
-  });
-}
-
-/* ============================================================
-   COPY TO CLIPBOARD
-   ============================================================ */
-function copyToClipboard(elementId) {
-  const el = document.getElementById(elementId);
-  if (!el) return;
-  navigator.clipboard.writeText(el.textContent.trim())
-    .then(() => showToast('Nomor rekening disalin!', 'info'))
-    .catch(() => {
-      const ta = document.createElement('textarea');
-      ta.value = el.textContent; document.body.appendChild(ta);
-      ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
-      showToast('Nomor rekening disalin!', 'info');
-    });
-}
-
-function copyAmountToClipboard() {
-  const rawAmt = String(currentGrandTotal);
-  navigator.clipboard.writeText(rawAmt)
-    .then(() => showToast('Nominal transfer disalin!', 'info'))
-    .catch(() => showToast('Gagal salin. Salin manual.', 'error'));
-}
-
-/* ============================================================
-   CEK STATUS TIKET (PUBLIK)
-   ============================================================ */
-async function checkTicketStatus(codeOverride) {
-  const code = codeOverride || document.getElementById('check-ticket-code')?.value.trim().toUpperCase();
-  if (!code) { showToast('Masukkan kode tiket terlebih dahulu.', 'error'); return; }
-
-  const result = await callSupabase(
-    supabaseClient.from('registrations').select('*').eq('ticket_code', code).single()
-  );
-
-  if (!result.success || !result.data) {
-    showToast('Kode tiket tidak ditemukan.', 'error'); return;
-  }
-
-  const reg = result.data;
-  renderStatusPage(reg);
-  navigateTo('status');
-}
-
-function renderStatusPage(reg) {
-  const statusMap = {
-    pending:  { icon: 'bi-hourglass-split', cls: 'pending', title: 'PENDAFTARAN DALAM PROSES', sub: 'Tim kami sedang memverifikasi bukti pembayaran Anda.' },
-    verified: { icon: 'bi-check-circle-fill', cls: 'verified', title: 'PEMBAYARAN TERVERIFIKASI!', sub: 'Tiket Anda aktif. Sampai jumpa di lokasi event!' },
-    rejected: { icon: 'bi-x-circle-fill', cls: 'rejected', title: 'PEMBAYARAN DITOLAK', sub: 'Bukti pembayaran tidak valid. Silakan upload ulang atau hubungi admin.' }
-  };
-
-  const s = statusMap[reg.payment_status] || statusMap.pending;
-
-  const iconEl = document.getElementById('status-main-icon');
-  if (iconEl) { iconEl.className = `bi ${s.icon} status-icon ${s.cls}`; iconEl.style.fontSize = '3.5rem'; }
-
-  const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-  setEl('status-title-text',    s.title);
-  setEl('status-subtitle-text', s.sub);
-  setEl('st-ticket-code',       reg.ticket_code);
-  setEl('st-father-name',       reg.father_name);
-  setEl('st-child-name',        reg.child_name);
-  setEl('st-grand-total',       formatRupiah(reg.grand_total));
-
-  const statusEl = document.getElementById('st-payment-status');
-  if (statusEl) {
-    const labelMap = { pending: 'Menunggu Verifikasi', verified: 'Terverifikasi ✓', rejected: 'Ditolak ✗' };
-    statusEl.textContent = labelMap[reg.payment_status] || reg.payment_status;
-    statusEl.style.color = s.cls === 'verified' ? 'var(--accent-green)' : s.cls === 'rejected' ? 'var(--color-rejected)' : 'var(--color-pending)';
-  }
-
-  const checkinEl = document.getElementById('st-checkin-status');
-  if (checkinEl) {
-    checkinEl.textContent = reg.checkin_status ? `Sudah Check-in (${formatTanggal(reg.checkin_at)})` : 'Belum Check-in';
-    checkinEl.style.color = reg.checkin_status ? 'var(--accent-green)' : 'var(--text-muted)';
-  }
-}
-
-/* ============================================================
-   DASHBOARD ADMIN — LOAD DATA
-   ============================================================ */
-async function loadDashboard() {
-  const result = await callSupabase(
-    supabaseClient.from('registrations').select('*').order('created_at', { ascending: false })
-  );
-  if (!result.success) return;
-
-  allRegistrations = result.data;
-  renderKPICards(allRegistrations);
-  renderRecentTable(allRegistrations.slice(0, 8));
-  renderPaymentChart(allRegistrations);
-  renderDailyChart(allRegistrations);
-  renderAIInsight(allRegistrations);
-  subscribeRealtime();
-}
-
-function renderKPICards(data) {
-  const total    = data.length;
-  const verified = data.filter(r => r.payment_status === 'verified');
-  const pending  = data.filter(r => r.payment_status === 'pending').length;
-  const checkins = data.filter(r => r.checkin_status).length;
-  const revenue  = verified.reduce((sum, r) => sum + (r.grand_total || 0), 0);
-
-  const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-  setEl('kpi-total',   total);
-  setEl('kpi-revenue', formatRupiah(revenue));
-  setEl('kpi-pending', pending);
-  setEl('kpi-checkin', `${checkins} / ${total}`);
-}
-
-function renderRecentTable(data) {
-  const tbody = document.getElementById('recent-reg-tbody');
-  if (!tbody) return;
-  tbody.innerHTML = data.length === 0
-    ? '<tr><td colspan="6" class="text-center text-muted py-3">Belum ada data.</td></tr>'
-    : data.map(reg => `
-      <tr>
-        <td><span class="font-mono" style="color:var(--accent-orange);font-size:12px">${reg.ticket_code}</span></td>
-        <td>${reg.father_name}</td>
-        <td>${reg.child_name}</td>
-        <td class="font-mono">${formatRupiah(reg.grand_total)}</td>
-        <td>${renderStatusBadge(reg.payment_status)}</td>
-        <td>
-          <button class="btn-table-action" onclick="openVerifyModal('${reg.id}')">
-            <i class="bi bi-eye-fill"></i> Detail
-          </button>
-        </td>
-      </tr>
-    `).join('');
-}
-
-function renderStatusBadge(status) {
-  const map = {
-    pending:  '<span class="status-badge badge-pending">Pending</span>',
-    verified: '<span class="status-badge badge-verified">Verified</span>',
-    rejected: '<span class="status-badge badge-rejected">Rejected</span>'
-  };
-  return map[status] || `<span class="status-badge">${status}</span>`;
-}
-
-function renderPaymentChart(data) {
-  const canvas = document.getElementById('chart-payment-status');
-  if (!canvas) return;
-
-  const pending  = data.filter(r => r.payment_status === 'pending').length;
-  const verified = data.filter(r => r.payment_status === 'verified').length;
-  const rejected = data.filter(r => r.payment_status === 'rejected').length;
-
-  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-  const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
-  const textColor = isDark ? '#9CA3AF' : '#6B7280';
-
-  if (chartPayment) chartPayment.destroy();
-  chartPayment = new Chart(canvas, {
-    type: 'bar',
-    data: {
-      labels: ['Pending', 'Terverifikasi', 'Ditolak'],
-      datasets: [{
-        data: [pending, verified, rejected],
-        backgroundColor: ['rgba(251,191,36,0.6)', 'rgba(163,230,53,0.6)', 'rgba(248,113,113,0.6)'],
-        borderColor:     ['#FBBF24', '#A3E635', '#F87171'],
-        borderWidth: 2,
-        borderRadius: 4
-      }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        y: { ticks: { color: textColor, stepSize: 1 }, grid: { color: gridColor } },
-        x: { ticks: { color: textColor }, grid: { display: false } }
-      }
-    }
-  });
-}
-
-function renderDailyChart(data) {
-  const canvas = document.getElementById('chart-daily-reg');
-  if (!canvas) return;
-
-  // Grouping per hari (7 hari terakhir)
-  const days = {};
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(); d.setDate(d.getDate() - i);
-    const key = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' });
-    days[key] = 0;
-  }
-  data.forEach(r => {
-    const d   = new Date(r.created_at);
-    const key = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' });
-    if (days[key] !== undefined) days[key]++;
-  });
-
-  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-  const textColor = isDark ? '#9CA3AF' : '#6B7280';
-  const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
-
-  if (chartDaily) chartDaily.destroy();
-  chartDaily = new Chart(canvas, {
-    type: 'line',
-    data: {
-      labels: Object.keys(days),
-      datasets: [{
-        label: 'Pendaftar',
-        data: Object.values(days),
-        borderColor: '#FF6B00',
-        backgroundColor: 'rgba(255,107,0,0.1)',
-        borderWidth: 2,
-        fill: true, tension: 0.4,
-        pointBackgroundColor: '#FF6B00', pointRadius: 4
-      }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        y: { ticks: { color: textColor, stepSize: 1 }, grid: { color: gridColor } },
-        x: { ticks: { color: textColor }, grid: { display: false } }
-      }
-    }
-  });
-}
-
-function renderAIInsight(data) {
-  const el = document.getElementById('ai-insight-text');
-  if (!el) return;
-
-  const total    = data.length;
-  const verified = data.filter(r => r.payment_status === 'verified').length;
-  const pending  = data.filter(r => r.payment_status === 'pending').length;
-  const rejected = data.filter(r => r.payment_status === 'rejected').length;
-  const checkins = data.filter(r => r.checkin_status).length;
-  const revenue  = data.filter(r => r.payment_status === 'verified').reduce((s, r) => s + r.grand_total, 0);
-  const convRate = total > 0 ? ((verified / total) * 100).toFixed(1) : 0;
-
-  el.textContent = `Total ${total} peserta terdaftar dengan tingkat konversi pembayaran ${convRate}% (${verified} terverifikasi, ${pending} menunggu, ${rejected} ditolak). Total pendapatan terverifikasi ${formatRupiah(revenue)}. Check-in hari-H: ${checkins} dari ${verified} peserta yang bayar (${total > 0 ? ((checkins / Math.max(verified, 1)) * 100).toFixed(0) : 0}%). ${pending > 0 ? `⚠ Ada ${pending} pembayaran menunggu verifikasi manual.` : ''}`;
-}
-
-/* ============================================================
-   LOAD SEMUA REGISTRASI (Tab Peserta)
-   ============================================================ */
-async function loadAllRegistrations() {
-  const result = await callSupabase(
-    supabaseClient.from('registrations').select('*').order('created_at', { ascending: false })
-  );
-  if (!result.success) return;
-  allRegistrations = result.data;
-  renderAllRegTable(allRegistrations);
-}
-
-function renderAllRegTable(data) {
-  const tbody = document.getElementById('all-reg-tbody');
-  if (!tbody) return;
-  tbody.innerHTML = data.length === 0
-    ? '<tr><td colspan="9" class="text-center text-muted py-3">Tidak ada data.</td></tr>'
-    : data.map(reg => `
-      <tr>
-        <td><span class="font-mono" style="color:var(--accent-orange);font-size:11px">${reg.ticket_code}</span></td>
-        <td>${reg.father_name}</td>
-        <td>${reg.child_name}</td>
-        <td>${reg.child_age} thn</td>
-        <td><a href="https://wa.me/${reg.whatsapp_number}" target="_blank" style="color:var(--accent-green)">${reg.whatsapp_number}</a></td>
-        <td class="font-mono">${formatRupiah(reg.grand_total)}</td>
-        <td>${renderStatusBadge(reg.payment_status)}</td>
-        <td>${reg.checkin_status ? '<span class="status-badge badge-checkin">✓ Check-in</span>' : '<span class="status-badge" style="background:rgba(107,114,128,0.15);color:#6B7280">Belum</span>'}</td>
-        <td style="white-space:nowrap">
-          <button class="btn-table-action me-1" onclick="openVerifyModal('${reg.id}')">
-            <i class="bi bi-eye-fill"></i>
-          </button>
-          <button class="btn-table-action danger" onclick="deleteRegistration('${reg.id}', '${reg.ticket_code}')">
-            <i class="bi bi-trash3-fill"></i>
-          </button>
-        </td>
-      </tr>
-    `).join('');
-}
-
-function filterRegistrations(search) {
-  const statusFilter = document.getElementById('filter-status')?.value || '';
-  const q = (search || '').toLowerCase();
-  const filtered = allRegistrations.filter(r => {
-    const matchSearch = !q || r.father_name.toLowerCase().includes(q)
-      || r.child_name.toLowerCase().includes(q)
-      || r.ticket_code.toLowerCase().includes(q)
-      || (r.whatsapp_number || '').includes(q);
-    const matchStatus = !statusFilter || r.payment_status === statusFilter;
-    return matchSearch && matchStatus;
-  });
-  renderAllRegTable(filtered);
-}
-
-function exportCSV() {
-  const header = ['Kode Tiket', 'Nama Ayah', 'Nama Anak', 'Usia Anak', 'WhatsApp', 'Alamat', 'Total', 'Status Bayar', 'Status Check-in', 'Tgl Daftar'];
-  const rows = allRegistrations.map(r => [
-    r.ticket_code, r.father_name, r.child_name, r.child_age,
-    r.whatsapp_number, `"${r.address}"`, r.grand_total,
-    r.payment_status, r.checkin_status ? 'Hadir' : 'Belum',
-    new Date(r.created_at).toLocaleDateString('id-ID')
-  ]);
-  const csv = [header, ...rows].map(r => r.join(',')).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href = url; a.download = `MKJ_Peserta_${Date.now()}.csv`;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  showToast('File CSV berhasil diunduh.', 'success');
-}
-
-/* ============================================================
-   MODAL VERIFIKASI BUKTI BAYAR
-   ============================================================ */
-async function openVerifyModal(regId) {
-  const result = await callSupabase(
-    supabaseClient.from('registrations').select(`*, registration_merchandise(*)`).eq('id', regId).single()
-  );
-  if (!result.success) return;
-
-  const reg = result.data;
-  activeVerifyId = reg.id;
-
-  document.getElementById('modal-verify-title').textContent = `Detail — ${reg.ticket_code}`;
-
-  // Preview bukti bayar
-  const previewArea = document.getElementById('proof-preview-area');
-  if (reg.payment_receipt_url) {
-    const isPdf = reg.payment_receipt_url.toLowerCase().includes('.pdf');
-    previewArea.innerHTML = isPdf
-      ? `<iframe src="${reg.payment_receipt_url}" class="proof-iframe" title="Bukti Bayar PDF"></iframe>`
-      : `<img src="${reg.payment_receipt_url}" class="proof-img" alt="Bukti Bayar"
-          onclick="window.open('${reg.payment_receipt_url}', '_blank')" style="cursor:zoom-in" />`;
-  } else {
-    previewArea.innerHTML = `<div class="proof-placeholder"><i class="bi bi-image text-muted" style="font-size:3rem"></i><p class="text-muted mt-2 small">Belum ada bukti pembayaran</p></div>`;
-  }
-
-  // Info pendaftaran
-  const merch = reg.registration_merchandise || [];
-  const infoList = document.getElementById('verify-info-list');
-  infoList.innerHTML = [
-    { label: 'Kode Tiket',    value: reg.ticket_code },
-    { label: 'Nama Ayah',    value: reg.father_name },
-    { label: 'Nama Anak',    value: `${reg.child_name} (${reg.child_age} thn)` },
-    { label: 'WhatsApp',     value: reg.whatsapp_number },
-    { label: 'Alamat',       value: reg.address },
-    { label: 'Tiket',        value: formatRupiah(reg.ticket_price) },
-    ...merch.map(m => ({ label: m.item_name, value: `${m.quantity}× ${m.size} / ${m.color} = ${formatRupiah(m.subtotal)}` })),
-    { label: 'Total Bayar',  value: formatRupiah(reg.grand_total), highlight: true },
-    { label: 'Status Bayar', value: reg.payment_status.toUpperCase() },
-    { label: 'Status Check-in', value: reg.checkin_status ? `Hadir (${formatTanggal(reg.checkin_at)})` : 'Belum Hadir' },
-    { label: 'Tgl Daftar',  value: formatTanggal(reg.created_at) }
-  ].map(item => `
-    <div class="verify-info-item">
-      <span class="verify-info-label">${item.label}</span>
-      <span class="verify-info-value" style="${item.highlight ? 'color:var(--accent-orange);font-weight:700' : ''}">${item.value}</span>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- MODAL: TAMBAH/EDIT MERCHANDISE                              -->
+  <!-- ============================================================ -->
+  <div class="modal-overlay d-none" id="modal-merch">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 class="modal-title" id="modal-merch-title">Tambah Merchandise</h3>
+        <button class="modal-close" onclick="closeModal('modal-merch')"><i class="bi bi-x-lg"></i></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="merch-id" />
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label-custom">Nama Item *</label>
+            <input type="text" id="merch-name" class="form-input-custom" />
+          </div>
+          <div class="col-12">
+            <label class="form-label-custom">Deskripsi</label>
+            <textarea id="merch-desc" class="form-input-custom" rows="2"></textarea>
+          </div>
+          <div class="col-12 col-sm-6">
+            <label class="form-label-custom">Harga (Rp) *</label>
+            <input type="number" id="merch-price" class="form-input-custom" min="0" />
+          </div>
+          <div class="col-12 col-sm-6">
+            <label class="form-label-custom">URL Foto</label>
+            <input type="url" id="merch-photo" class="form-input-custom" placeholder="https://..." />
+          </div>
+          <div class="col-12">
+            <label class="form-label-custom">Ukuran Tersedia (pisahkan dengan koma)</label>
+            <input type="text" id="merch-sizes" class="form-input-custom" placeholder="S, M, L, XL, XXL" />
+          </div>
+          <div class="col-12">
+            <label class="form-label-custom">Warna Tersedia (pisahkan dengan koma)</label>
+            <input type="text" id="merch-colors" class="form-input-custom" placeholder="Hitam, Putih, Orange" />
+          </div>
+          <div class="col-12">
+            <label class="form-label-custom">Status</label>
+            <select id="merch-active" class="form-input-custom">
+              <option value="true">Aktif (Tampil di katalog)</option>
+              <option value="false">Nonaktif (Tersembunyi)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-sm-outline" onclick="closeModal('modal-merch')">Batal</button>
+        <button class="btn-primary-orange" onclick="saveMerch()">
+          <i class="bi bi-floppy-fill me-1"></i>Simpan
+        </button>
+      </div>
     </div>
-  `).join('');
+  </div>
 
-  openModal('modal-verify');
-}
-
-async function updatePaymentStatus(newStatus) {
-  if (!activeVerifyId) return;
-  const result = await callSupabase(
-    supabaseClient.from('registrations').update({ payment_status: newStatus }).eq('id', activeVerifyId).select().single(),
-    newStatus === 'verified' ? 'Pembayaran berhasil diverifikasi!' : 'Pembayaran ditolak.'
-  );
-  if (result.success) {
-    closeModal('modal-verify');
-    loadDashboard();
-    loadAllRegistrations();
-  }
-}
-
-async function deleteRegistration(regId, ticketCode) {
-  if (!confirm(`Hapus pendaftaran ${ticketCode}? Tindakan ini tidak bisa dibatalkan.`)) return;
-  const result = await callSupabase(
-    supabaseClient.from('registrations').delete().eq('id', regId),
-    `Pendaftaran ${ticketCode} berhasil dihapus.`
-  );
-  if (result.success) { loadAllRegistrations(); loadDashboard(); }
-}
-
-/* ============================================================
-   MASTER MERCHANDISE ADMIN
-   ============================================================ */
-async function loadMerchAdmin() {
-  const result = await callSupabase(
-    supabaseClient.from('merchandise_items').select('*').order('created_at')
-  );
-  if (!result.success) return;
-
-  const tbody = document.getElementById('merch-admin-tbody');
-  if (!tbody) return;
-
-  tbody.innerHTML = result.data.length === 0
-    ? '<tr><td colspan="6" class="text-center text-muted py-3">Belum ada item merchandise.</td></tr>'
-    : result.data.map(item => `
-      <tr>
-        <td>
-          <div style="font-weight:600;font-size:13px">${item.name}</div>
-          <div style="font-size:11px;color:var(--text-muted)">${item.description || ''}</div>
-        </td>
-        <td class="font-mono">${formatRupiah(item.price)}</td>
-        <td style="font-size:11px">${(item.available_sizes || []).join(', ')}</td>
-        <td style="font-size:11px">${(item.available_colors || []).join(', ')}</td>
-        <td>${item.is_active
-          ? '<span class="status-badge badge-verified">Aktif</span>'
-          : '<span class="status-badge" style="background:rgba(107,114,128,0.15);color:#6B7280">Nonaktif</span>'}</td>
-        <td style="white-space:nowrap">
-          <button class="btn-table-action me-1" onclick="openMerchModal('${item.id}')">
-            <i class="bi bi-pencil-fill"></i>
-          </button>
-          <button class="btn-table-action danger" onclick="deleteMerch('${item.id}', '${item.name.replace(/'/g,'')}')">
-            <i class="bi bi-trash3-fill"></i>
-          </button>
-        </td>
-      </tr>
-    `).join('');
-}
-
-async function openMerchModal(itemId) {
-  document.getElementById('merch-id').value = '';
-  document.getElementById('merch-name').value  = '';
-  document.getElementById('merch-desc').value  = '';
-  document.getElementById('merch-price').value = '';
-  document.getElementById('merch-photo').value = '';
-  document.getElementById('merch-sizes').value = '';
-  document.getElementById('merch-colors').value = '';
-  document.getElementById('merch-active').value = 'true';
-  document.getElementById('modal-merch-title').textContent = 'Tambah Merchandise';
-
-  if (itemId) {
-    document.getElementById('modal-merch-title').textContent = 'Edit Merchandise';
-    const result = await callSupabase(
-      supabaseClient.from('merchandise_items').select('*').eq('id', itemId).single()
-    );
-    if (result.success) {
-      const it = result.data;
-      document.getElementById('merch-id').value     = it.id;
-      document.getElementById('merch-name').value   = it.name;
-      document.getElementById('merch-desc').value   = it.description || '';
-      document.getElementById('merch-price').value  = it.price;
-      document.getElementById('merch-photo').value  = it.photo_url || '';
-      document.getElementById('merch-sizes').value  = (it.available_sizes || []).join(', ');
-      document.getElementById('merch-colors').value = (it.available_colors || []).join(', ');
-      document.getElementById('merch-active').value = String(it.is_active);
-    }
-  }
-  openModal('modal-merch');
-}
-
-async function saveMerch() {
-  const id      = document.getElementById('merch-id').value;
-  const name    = document.getElementById('merch-name').value.trim();
-  const desc    = document.getElementById('merch-desc').value.trim();
-  const price   = parseFloat(document.getElementById('merch-price').value);
-  const photo   = document.getElementById('merch-photo').value.trim();
-  const sizes   = document.getElementById('merch-sizes').value.split(',').map(s => s.trim()).filter(Boolean);
-  const colors  = document.getElementById('merch-colors').value.split(',').map(c => c.trim()).filter(Boolean);
-  const active  = document.getElementById('merch-active').value === 'true';
-
-  if (!name || !price || sizes.length === 0 || colors.length === 0) {
-    showToast('Nama, harga, ukuran, dan warna wajib diisi.', 'error'); return;
-  }
-
-  const payload = {
-    name, description: desc, price,
-    photo_url: photo || null,
-    available_sizes: sizes, available_colors: colors,
-    is_active: active
-  };
-
-  const promise = id
-    ? supabaseClient.from('merchandise_items').update(payload).eq('id', id).select().single()
-    : supabaseClient.from('merchandise_items').insert(payload).select().single();
-
-  const result = await callSupabase(promise, id ? 'Merchandise berhasil diperbarui.' : 'Merchandise berhasil ditambahkan.');
-  if (result.success) { closeModal('modal-merch'); loadMerchAdmin(); }
-}
-
-async function deleteMerch(itemId, name) {
-  if (!confirm(`Hapus "${name}"? Stok pesanan terdahulu tidak terpengaruh.`)) return;
-  const result = await callSupabase(
-    supabaseClient.from('merchandise_items').delete().eq('id', itemId),
-    `"${name}" berhasil dihapus.`
-  );
-  if (result.success) loadMerchAdmin();
-}
-
-/* ============================================================
-   QR / BARCODE SCANNER
-   ============================================================ */
-function initScanner() {
-  const placeholder = document.getElementById('scanner-placeholder');
-  const video = document.getElementById('scanner-video');
-  if (placeholder) placeholder.style.display = 'flex';
-  if (video) video.style.display = 'none';
-}
-
-async function startScanner() {
-  const placeholder = document.getElementById('scanner-placeholder');
-  const video = document.getElementById('scanner-video');
-  const btnStart = document.getElementById('btn-start-scan');
-  const btnStop  = document.getElementById('btn-stop-scan');
-
-  try {
-    scannerStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment' }
-    });
-
-    if (video) { video.srcObject = scannerStream; video.style.display = 'block'; }
-    if (placeholder) placeholder.style.display = 'none';
-    if (btnStart) btnStart.classList.add('d-none');
-    if (btnStop)  btnStop.classList.remove('d-none');
-
-    // html5-qrcode sebagai scanner engine
-    if (window.Html5Qrcode) {
-      qrScanner = new Html5Qrcode('scanner-viewport', { verbose: false });
-      qrScanner.start(
-        { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 200, height: 200 } },
-        (decodedText) => {
-          processCheckin(decodedText);
-          stopScanner();
-        },
-        () => {}
-      ).catch(() => {});
-    } else {
-      showToast('Library scanner tidak tersedia. Gunakan input manual.', 'info');
-    }
-  } catch (err) {
-    showToast('Tidak dapat mengakses kamera. Periksa izin browser.', 'error');
-  }
-}
-
-function stopScanner() {
-  if (qrScanner) { qrScanner.stop().catch(() => {}); qrScanner = null; }
-  if (scannerStream) { scannerStream.getTracks().forEach(t => t.stop()); scannerStream = null; }
-  const placeholder = document.getElementById('scanner-placeholder');
-  const video = document.getElementById('scanner-video');
-  const btnStart = document.getElementById('btn-start-scan');
-  const btnStop  = document.getElementById('btn-stop-scan');
-  if (placeholder) placeholder.style.display = 'flex';
-  if (video) { video.srcObject = null; video.style.display = 'none'; }
-  if (btnStart) btnStart.classList.remove('d-none');
-  if (btnStop)  btnStop.classList.add('d-none');
-}
-
-async function processCheckin(rawCode) {
-  const code = (rawCode || '').trim().toUpperCase();
-  if (!code) { showToast('Masukkan kode tiket.', 'error'); return; }
-
-  const result = await callSupabase(
-    supabaseClient.from('registrations').select('*').eq('ticket_code', code).single()
-  );
-
-  const resultArea = document.getElementById('scan-result-area');
-  const resultCard = document.getElementById('scan-result-card');
-  const resultIcon = document.getElementById('scan-result-icon');
-  const resultMsg  = document.getElementById('scan-result-message');
-  const resultDet  = document.getElementById('scan-result-detail');
-
-  if (resultArea) resultArea.classList.remove('d-none');
-
-  if (!result.success || !result.data) {
-    if (resultCard) resultCard.className = 'scan-result-card error';
-    if (resultIcon) resultIcon.innerHTML = '<i class="bi bi-x-circle-fill" style="color:var(--color-rejected);font-size:3rem"></i>';
-    if (resultMsg)  resultMsg.textContent = 'TIKET TIDAK DITEMUKAN';
-    if (resultDet)  resultDet.textContent = `Kode: ${code}`;
-    showToast('Tiket tidak ditemukan!', 'error');
-    playBeep(false); return;
-  }
-
-  const reg = result.data;
-
-  if (reg.payment_status !== 'verified') {
-    if (resultCard) resultCard.className = 'scan-result-card error';
-    if (resultIcon) resultIcon.innerHTML = '<i class="bi bi-exclamation-triangle-fill" style="color:var(--color-pending);font-size:3rem"></i>';
-    if (resultMsg)  resultMsg.textContent = 'PEMBAYARAN BELUM TERVERIFIKASI';
-    if (resultDet)  resultDet.textContent = `${reg.father_name} & ${reg.child_name} — Status: ${reg.payment_status}`;
-    showToast('Pembayaran belum terverifikasi!', 'error');
-    playBeep(false); return;
-  }
-
-  if (reg.checkin_status) {
-    if (resultCard) resultCard.className = 'scan-result-card error';
-    if (resultIcon) resultIcon.innerHTML = '<i class="bi bi-exclamation-circle-fill" style="color:var(--color-pending);font-size:3rem"></i>';
-    if (resultMsg)  resultMsg.textContent = 'TIKET SUDAH DIGUNAKAN';
-    if (resultDet)  resultDet.textContent = `${reg.father_name} & ${reg.child_name} — Check-in: ${formatTanggal(reg.checkin_at)}`;
-    showToast('Tiket ini sudah check-in sebelumnya!', 'error');
-    playBeep(false); return;
-  }
-
-  // Proses check-in
-  const updateResult = await callSupabase(
-    supabaseClient.from('registrations').update({
-      checkin_status: true,
-      checkin_at: new Date().toISOString()
-    }).eq('id', reg.id),
-    null
-  );
-
-  if (updateResult.success) {
-    if (resultCard) resultCard.className = 'scan-result-card success';
-    if (resultIcon) resultIcon.innerHTML = '<i class="bi bi-check-circle-fill" style="color:var(--accent-green);font-size:3rem"></i>';
-    if (resultMsg)  resultMsg.textContent = 'CHECK-IN BERHASIL!';
-    if (resultDet)  resultDet.textContent = `${reg.father_name} & ${reg.child_name} | ${reg.ticket_code}`;
-    showToast(`✓ Check-in berhasil: ${reg.father_name} & ${reg.child_name}`, 'success');
-    playBeep(true);
-
-    // Clear manual input
-    const manualInput = document.getElementById('manual-ticket-code');
-    if (manualInput) manualInput.value = '';
-  }
-}
-
-function playBeep(success) {
-  try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.frequency.value = success ? 880 : 300;
-    osc.type = 'sine';
-    gain.gain.setValueAtTime(0.3, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.4);
-  } catch (e) { /* Browser tanpa AudioContext */ }
-}
-
-/* ============================================================
-   PENGATURAN ADMIN
-   ============================================================ */
-async function loadSettings() {
-  const result = await callSupabase(supabaseClient.from('app_config').select('*'));
-  if (!result.success) return;
-
-  const config = {};
-  result.data.forEach(row => { config[row.key] = row.value; });
-
-  const setVal = (id, key) => {
-    const el = document.getElementById(id);
-    if (el && config[key] !== undefined) el.value = config[key];
-  };
-
-  setVal('cfg-appName',        'appName');
-  setVal('cfg-eventDate',      'eventDate');
-  setVal('cfg-eventLocation',  'eventLocation');
-  setVal('cfg-ticketPrice',    'ticketPrice');
-  setVal('cfg-whatsappAdmin',  'whatsappAdmin');
-  setVal('cfg-bankName',       'bankName');
-  setVal('cfg-bankAccount',    'bankAccount');
-  setVal('cfg-bankHolder',     'bankHolder');
-  setVal('cfg-tagline',        'tagline');
-}
-
-async function saveSettings() {
-  const fields = {
-    appName:       document.getElementById('cfg-appName')?.value,
-    eventDate:     document.getElementById('cfg-eventDate')?.value,
-    eventLocation: document.getElementById('cfg-eventLocation')?.value,
-    ticketPrice:   document.getElementById('cfg-ticketPrice')?.value,
-    whatsappAdmin: document.getElementById('cfg-whatsappAdmin')?.value,
-    bankName:      document.getElementById('cfg-bankName')?.value,
-    bankAccount:   document.getElementById('cfg-bankAccount')?.value,
-    bankHolder:    document.getElementById('cfg-bankHolder')?.value,
-    tagline:       document.getElementById('cfg-tagline')?.value
-  };
-
-  const upserts = Object.entries(fields)
-    .filter(([, v]) => v !== undefined && v !== '')
-    .map(([key, value]) => ({ key, value }));
-
-  const result = await callSupabase(
-    supabaseClient.from('app_config').upsert(upserts, { onConflict: 'key' }),
-    'Pengaturan berhasil disimpan!'
-  );
-
-  if (result.success) await loadAppConfig();
-}
-
-/* ============================================================
-   REALTIME SUBSCRIPTION
-   ============================================================ */
-function subscribeRealtime() {
-  if (realtimeChannel) return; // Sudah subscribe
-  realtimeChannel = supabaseClient
-    .channel('realtime:registrations')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'registrations' }, () => {
-      // Reload dashboard secara silent saat ada perubahan
-      loadAllRegistrations();
-      callSupabase(
-        supabaseClient.from('registrations').select('*').order('created_at', { ascending: false })
-      ).then(result => {
-        if (result.success) {
-          allRegistrations = result.data;
-          renderKPICards(allRegistrations);
-          renderRecentTable(allRegistrations.slice(0, 8));
-          renderAIInsight(allRegistrations);
-        }
-      });
-    })
-    .subscribe();
-}
-
-/* ============================================================
-   MODAL HELPERS
-   ============================================================ */
-function openModal(modalId) {
-  const modal = document.getElementById(modalId);
-  if (modal) modal.classList.remove('d-none');
-  document.body.style.overflow = 'hidden';
-}
-
-function closeModal(modalId) {
-  const modal = document.getElementById(modalId);
-  if (modal) modal.classList.add('d-none');
-  document.body.style.overflow = '';
-  if (modalId === 'modal-verify') activeVerifyId = null;
-}
-
-// Klik overlay untuk tutup modal
-document.addEventListener('click', (e) => {
-  if (e.target.classList.contains('modal-overlay')) {
-    e.target.classList.add('d-none');
-    document.body.style.overflow = '';
-    activeVerifyId = null;
-  }
-});
-
-/* ============================================================
-   INIT APLIKASI
-   ============================================================ */
-(async function init() {
-  // Cek apakah user sudah login
-  const { data: { session } } = await supabaseClient.auth.getSession();
-  if (session) {
-    await loadCurrentProfile(session.user.id);
-    navigateTo('dashboard');
-  } else {
-    navigateTo('public');
-  }
-})();
+  <!-- ============================================================ -->
+  <!-- CDN Scripts                                                  -->
+  <!-- ============================================================ -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- html5-qrcode untuk scanner barcode/QR -->
+  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <!-- QRCode.js untuk generate QR Code tiket -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <!-- JsBarcode untuk generate Barcode tiket -->
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+  <!-- html2canvas untuk download tiket sebagai PNG -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
